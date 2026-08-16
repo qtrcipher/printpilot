@@ -29,8 +29,9 @@
 - [x] Scaffold this file into the repo as `PROGRESS.md` — `ios-ship-gate` (template in its references/)
 
 ## Phase 2 — Features
-- [ ] Core features: <list them in Phase 0 — candidates: printer discovery (mDNS/SNMP),
-      Remote UI mirror/control, joystick/gamepad navigation mapping, multi-printer profiles>
+- [ ] Core features (from design doc §1/§3): LAN printer discovery (mDNS + SNMP sysDescr, manual IP fallback),
+      multi-printer profiles (keychain credentials), control view (embedded Remote UI + status strip + hint bar),
+      keyboard/gamepad navigation layer, per-model adapter manifests (canon-mf750 first)
 - [ ] Onboarding + in-app guides (connect-first-printer flow)
 - [ ] Accessibility (keyboard navigation, screen-reader labels)
 - [ ] Developer debug menu — debug builds only

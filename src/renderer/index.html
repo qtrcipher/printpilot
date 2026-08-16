@@ -16,26 +16,64 @@
         <p class="home__subtitle">Printer menu recovery console — LAN-only, no telemetry.</p>
       </header>
 
-      <section class="home__body" aria-live="polite">
+      <section class="home__body">
+        <!-- Loading: scan-in-progress skeleton (design doc §7). -->
         <div class="skeleton-list" id="scan-skeleton" hidden>
           <div class="skeleton-row"></div>
           <div class="skeleton-row"></div>
           <div class="skeleton-row"></div>
         </div>
 
-        <div class="empty-state" id="empty-state">
-          <p class="empty-state__heading">No printers found yet</p>
-          <p class="empty-state__hint">
-            Scan your local network, or add a printer manually by its IP address.
+        <!-- Error: discovery failure with retry. -->
+        <div class="state-panel" id="error-state" hidden>
+          <p class="state-panel__heading">Network scan failed</p>
+          <p class="state-panel__hint" id="error-message"></p>
+          <button type="button" class="btn btn--primary" id="retry-button">Retry scan</button>
+        </div>
+
+        <!-- Success: saved profiles pinned, discovered-but-unsaved below. -->
+        <div id="list-state" hidden>
+          <h2 class="list-heading" id="saved-heading" hidden>Saved printers</h2>
+          <ul class="printer-list" id="saved-list" aria-label="Saved printers"></ul>
+          <h2 class="list-heading" id="discovered-heading" hidden>Found on this network</h2>
+          <ul class="printer-list" id="discovered-list" aria-label="Discovered printers"></ul>
+        </div>
+
+        <!-- Empty: nothing found → guided manual-IP flow. -->
+        <div class="state-panel" id="empty-state" hidden>
+          <p class="state-panel__heading">No printers found</p>
+          <p class="state-panel__hint">
+            Make sure the printer is powered on and connected to the same network, then rescan —
+            or add it by IP address below.
           </p>
         </div>
+
+        <form class="manual-add" id="manual-add" novalidate hidden>
+          <label class="manual-add__label" for="ip-input">Add by IP address</label>
+          <div class="manual-add__row">
+            <input
+              id="ip-input"
+              class="input mono"
+              type="text"
+              inputmode="decimal"
+              placeholder="192.168.1.50"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="submit" class="btn btn--secondary" id="check-ip-button">Check</button>
+          </div>
+          <p class="manual-add__feedback" id="ip-feedback" role="alert" hidden></p>
+          <button type="button" class="btn btn--primary" id="save-manual-button" hidden>
+            Save as profile
+          </button>
+        </form>
+
+        <p class="toast" id="toast" role="status" hidden></p>
       </section>
 
       <footer class="home__actions">
         <button type="button" class="btn btn--primary" id="scan-button">Scan for printers</button>
-        <button type="button" class="btn btn--secondary" id="add-ip-button" disabled>
-          Add by IP
-        </button>
+        <button type="button" class="btn btn--secondary" id="add-ip-button">Add by IP</button>
         <p class="home__version mono" id="version-label"></p>
       </footer>
     </main>

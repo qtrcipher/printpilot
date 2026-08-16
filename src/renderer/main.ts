@@ -1,18 +1,18 @@
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/700.css';
+import { isValidIpv4, type DiscoveredPrinter } from '../main/discovery';
+import type { PrintPilotBridge, PublicProfile } from '../preload/index';
 import './styles.css';
 
 /**
- * Home/discovery screen placeholder (Phase 1). Real discovery, the guided
- * Add-by-IP flow, and the control view are Phase 2 — the scan button only
- * demonstrates the loading → empty state cycle and the disable-during-async
- * rule (design doc §7).
+ * Home/discovery screen (design doc §7 four-state rule):
+ * loading = scan skeleton; error = discovery failure + retry; empty = no
+ * printers → guided Add-by-IP with reachability pre-check; success = printer
+ * list (saved profiles pinned with status dot, discovered-but-unsaved below
+ * with a Save action). Clicking a printer shows a transient toast — the
+ * control view lands in the next chunk.
  */
-
-interface PrintPilotBridge {
-  getAppInfo(): Promise<{ version: string }>;
-}
 
 declare global {
   interface Window {
@@ -20,27 +20,298 @@ declare global {
   }
 }
 
-const scanButton = document.querySelector<HTMLButtonElement>('#scan-button');
-const addIpButton = document.querySelector<HTMLButtonElement>('#add-ip-button');
-const skeleton = document.querySelector<HTMLElement>('#scan-skeleton');
-const emptyState = document.querySelector<HTMLElement>('#empty-state');
-const versionLabel = document.querySelector<HTMLElement>('#version-label');
+const bridge = window.printpilot;
 
-if (scanButton && skeleton && emptyState) {
-  scanButton.addEventListener('click', () => {
-    scanButton.disabled = true;
-    addIpButton?.setAttribute('disabled', '');
-    emptyState.hidden = true;
-    skeleton.hidden = false;
-
-    window.setTimeout(() => {
-      skeleton.hidden = true;
-      emptyState.hidden = false;
-      scanButton.disabled = false;
-    }, 1200);
-  });
+function el<T extends HTMLElement>(selector: string): T {
+  const node = document.querySelector<T>(selector);
+  if (!node) throw new Error(`Missing element: ${selector}`);
+  return node;
 }
 
-void window.printpilot?.getAppInfo().then((info) => {
-  if (versionLabel) versionLabel.textContent = `v${info.version}`;
+const scanButton = el<HTMLButtonElement>('#scan-button');
+const addIpButton = el<HTMLButtonElement>('#add-ip-button');
+const retryButton = el<HTMLButtonElement>('#retry-button');
+const skeleton = el('#scan-skeleton');
+const errorState = el('#error-state');
+const errorMessage = el('#error-message');
+const emptyState = el('#empty-state');
+const listState = el('#list-state');
+const savedHeading = el('#saved-heading');
+const discoveredHeading = el('#discovered-heading');
+const savedList = el<HTMLUListElement>('#saved-list');
+const discoveredList = el<HTMLUListElement>('#discovered-list');
+const manualAdd = el<HTMLFormElement>('#manual-add');
+const ipInput = el<HTMLInputElement>('#ip-input');
+const checkIpButton = el<HTMLButtonElement>('#check-ip-button');
+const ipFeedback = el('#ip-feedback');
+const saveManualButton = el<HTMLButtonElement>('#save-manual-button');
+const toast = el('#toast');
+const versionLabel = el('#version-label');
+
+type HomeState = 'loading' | 'error' | 'empty' | 'success';
+
+let scanWindowMs = 5000;
+let scanTimer: number | undefined;
+let toastTimer: number | undefined;
+let savedProfiles: PublicProfile[] = [];
+const discovered = new Map<string, DiscoveredPrinter>();
+let lastManualHit: { host: string; vendor: string; model: string } | null = null;
+
+function show(state: HomeState): void {
+  skeleton.hidden = state !== 'loading';
+  errorState.hidden = state !== 'error';
+  emptyState.hidden = state !== 'empty';
+  listState.hidden = state !== 'success';
+  manualAdd.hidden = state === 'loading' || state === 'error';
+  addIpButton.disabled = state === 'loading' || state === 'error';
+}
+
+function showToast(message: string): void {
+  toast.textContent = message;
+  toast.hidden = false;
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast.hidden = true;
+  }, 3000);
+}
+
+function showError(message: string): void {
+  window.clearTimeout(scanTimer);
+  errorMessage.textContent = message;
+  scanButton.disabled = false;
+  scanButton.textContent = 'Scan for printers';
+  show('error');
+}
+
+function settleScan(): void {
+  scanButton.disabled = false;
+  scanButton.textContent = 'Scan for printers';
+  show(savedProfiles.length + discovered.size > 0 ? 'success' : 'empty');
+}
+
+async function startScan(): Promise<void> {
+  if (!bridge) return;
+  show('loading');
+  scanButton.disabled = true; // disable during async command (design doc §7)
+  scanButton.textContent = 'Scanning…';
+  discovered.clear();
+  renderLists();
+  try {
+    await bridge.startDiscovery();
+  } catch (err) {
+    showError(err instanceof Error ? err.message : String(err));
+    return;
+  }
+  window.clearTimeout(scanTimer);
+  scanTimer = window.setTimeout(settleScan, scanWindowMs);
+}
+
+function onPrinterFound(printer: DiscoveredPrinter): void {
+  discovered.set(printer.host, printer);
+  // Live updates: swap whatever is showing (skeleton, empty) for the list.
+  show('success');
+  renderLists();
+}
+
+function describe(printer: { vendor?: string; model?: string }): string {
+  return [printer.vendor, printer.model].filter(Boolean).join(' ');
+}
+
+function rowButton(primary: string, secondary: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'printer-row';
+  const name = document.createElement('span');
+  name.className = 'printer-row__name';
+  name.textContent = primary;
+  const detail = document.createElement('span');
+  detail.className = 'printer-row__detail mono';
+  detail.textContent = secondary;
+  button.append(name, detail);
+  button.addEventListener('click', () => {
+    showToast('Control view lands in the next chunk.');
+  });
+  return button;
+}
+
+function renderLists(): void {
+  // Saved profiles pinned on top, status dot green when the host is
+  // currently discovered on the LAN.
+  savedList.replaceChildren();
+  for (const profile of savedProfiles) {
+    const li = document.createElement('li');
+    li.className = 'printer-list__item';
+    const online = discovered.has(profile.host);
+    const dot = document.createElement('span');
+    dot.className = `status-dot ${online ? 'status-dot--online' : 'status-dot--offline'}`;
+    dot.title = online ? 'Online' : 'Not seen on the network';
+    const row = rowButton(
+      profile.nickname,
+      [profile.host, describe(profile)].filter(Boolean).join(' · '),
+    );
+    row.prepend(dot);
+    li.append(row);
+    savedList.append(li);
+  }
+  savedHeading.hidden = savedProfiles.length === 0;
+
+  // Discovered-but-unsaved below, each with a Save action.
+  const savedHosts = new Set(savedProfiles.map((p) => p.host));
+  const unsaved = [...discovered.values()].filter((p) => !savedHosts.has(p.host));
+  discoveredList.replaceChildren();
+  for (const printer of unsaved) {
+    const li = document.createElement('li');
+    li.className = 'printer-list__item';
+    const row = rowButton(
+      printer.hostname ?? printer.host,
+      [printer.host, describe(printer)].filter(Boolean).join(' · '),
+    );
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'btn btn--secondary printer-list__save';
+    save.textContent = 'Save';
+    save.addEventListener('click', () => {
+      void saveDiscovered(printer, save);
+    });
+    li.append(row, save);
+    discoveredList.append(li);
+  }
+  discoveredHeading.hidden = unsaved.length === 0;
+}
+
+async function saveDiscovered(printer: DiscoveredPrinter, button: HTMLButtonElement): Promise<void> {
+  if (!bridge) return;
+  button.disabled = true;
+  try {
+    await bridge.addProfile({
+      nickname: printer.hostname || describe(printer) || printer.host,
+      host: printer.host,
+      vendor: printer.vendor ?? '',
+      model: printer.model ?? '',
+      adapter: printer.vendor === 'canon' ? 'canon-mf750' : 'generic',
+    });
+    savedProfiles = await bridge.listProfiles();
+    renderLists();
+    showToast(`Saved ${printer.hostname ?? printer.host}.`);
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function feedback(kind: 'info' | 'success' | 'warning' | 'error', message: string): void {
+  ipFeedback.className = `manual-add__feedback manual-add__feedback--${kind}`;
+  ipFeedback.textContent = message;
+  ipFeedback.hidden = false;
+}
+
+manualAdd.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void checkManualIp();
 });
+
+async function checkManualIp(): Promise<void> {
+  if (!bridge) return;
+  const ip = ipInput.value.trim();
+  lastManualHit = null;
+  saveManualButton.hidden = true;
+
+  // Inline format validation — no IPC round-trip for obvious typos.
+  if (!isValidIpv4(ip)) {
+    feedback('error', 'Enter a valid IPv4 address, e.g. 192.168.1.50.');
+    ipInput.focus();
+    return;
+  }
+
+  checkIpButton.disabled = true;
+  feedback('info', `Checking ${ip}…`);
+  try {
+    const result = await bridge.checkManualHost(ip);
+    switch (result.status) {
+      case 'printer': {
+        const name = describe(result);
+        feedback(
+          'success',
+          `Found a printer at ${ip}${name ? ` — ${name}` : ''}. Canon Remote UI detected.`,
+        );
+        lastManualHit = { host: ip, vendor: result.vendor ?? '', model: result.model ?? '' };
+        saveManualButton.hidden = false;
+        break;
+      }
+      case 'reachable-unknown':
+        feedback(
+          'warning',
+          `A device answered at ${ip} but it doesn't look like a printer's Remote UI. ` +
+            'If this is your printer, its Remote UI may be disabled — enable it in the printer’s network settings and check again.',
+        );
+        break;
+      case 'unreachable':
+        feedback(
+          'error',
+          `Nothing answered at ${ip}. Check that the printer is powered on, connected to the same network, and that the IP is correct.`,
+        );
+        break;
+    }
+  } catch (err) {
+    feedback('error', err instanceof Error ? err.message : String(err));
+  } finally {
+    checkIpButton.disabled = false;
+  }
+}
+
+saveManualButton.addEventListener('click', () => {
+  void (async () => {
+    if (!bridge || !lastManualHit) return;
+    saveManualButton.disabled = true;
+    try {
+      await bridge.addProfile({
+        nickname: lastManualHit.model || lastManualHit.host,
+        host: lastManualHit.host,
+        vendor: lastManualHit.vendor,
+        model: lastManualHit.model,
+        adapter: lastManualHit.vendor === 'canon' ? 'canon-mf750' : 'generic',
+      });
+      savedProfiles = await bridge.listProfiles();
+      renderLists();
+      saveManualButton.hidden = true;
+      show('success');
+      showToast(`Saved ${lastManualHit.host}.`);
+    } catch (err) {
+      feedback('error', err instanceof Error ? err.message : String(err));
+    } finally {
+      saveManualButton.disabled = false;
+    }
+  })();
+});
+
+scanButton.addEventListener('click', () => {
+  void startScan();
+});
+retryButton.addEventListener('click', () => {
+  void startScan();
+});
+addIpButton.addEventListener('click', () => {
+  ipInput.focus();
+});
+
+async function init(): Promise<void> {
+  if (!bridge) {
+    showError('App bridge unavailable — restart the app.');
+    return;
+  }
+  try {
+    const info = await bridge.getAppInfo();
+    versionLabel.textContent = `v${info.version}`;
+    scanWindowMs = info.scanWindowMs;
+    savedProfiles = await bridge.listProfiles();
+  } catch (err) {
+    showError(err instanceof Error ? err.message : String(err));
+    return;
+  }
+  bridge.onPrinterFound(onPrinterFound);
+  bridge.onDiscoveryError(showError);
+  await startScan(); // scan on launch (design doc §7)
+}
+
+void init();
