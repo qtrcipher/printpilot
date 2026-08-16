@@ -60,7 +60,7 @@
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
-- 2026-08-17 — Phase 3 COMPLETE: logging+redaction, local crash capture, security audit (13 fixed), docs + fixture recorder. 172 unit + 12 e2e green locally. KNOWN ISSUE: onboarding e2e flakes on ubuntu CI (xvfb timing) — next: deflake it, then Phase 4 packaging
+- 2026-08-17 — Phase 3 COMPLETE: logging+redaction, local crash capture, security audit (13 fixed), docs + fixture recorder. 172 unit + 12 e2e green; CI matrix green after fixing a real settings-close clobber bug + Windows shebang issue — next: record real MF750 fixtures (needs the printer on LAN), then Phase 4 packaging
 - 2026-08-17 — Phase 2 COMPLETE: discovery (mDNS/SNMP), profiles+safeStorage, control view + nav layer (keyboard/gamepad), adapters, settings+remap, onboarding, a11y, debug menu. 137 unit + 9 e2e green — next: record real MF750 fixtures (needs the printer on LAN), then Phase 3 hardening
 - 2026-08-17 — CI matrix green (win+ubuntu) after two fixes: author email for deb, `--publish never` — Phase 1 COMPLETE — next: Phase 2 core features (discovery, control view, nav layer)
 - 2026-08-16 — Phase 1 nearly done: Electron+TS scaffold (23 unit + e2e green), GPLv3, public repo github.com/qtrcipher/printpilot live, icon, CI matrix — next: verify Docker build, then Phase 2 core features
