@@ -627,3 +627,58 @@ select.input {
     transition: none !important;
   }
 }
+
+/* --- On-screen navigation pad (third input source) ---------------------- */
+
+.control__body {
+  position: relative;
+}
+
+.nav-pad {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  grid-template-areas:
+    '. up .'
+    'left ok right'
+    'back down .';
+  gap: 6px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  opacity: 0.45;
+  transition: opacity 120ms ease;
+  z-index: 10;
+}
+
+.nav-pad:hover,
+.nav-pad:focus-within {
+  opacity: 1;
+}
+
+.nav-pad__button {
+  width: 44px;
+  height: 44px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nav-pad__button:active {
+  border-color: var(--focus-ring);
+}
+
+#nav-pad-up { grid-area: up; }
+#nav-pad-down { grid-area: down; }
+#nav-pad-left { grid-area: left; }
+#nav-pad-right { grid-area: right; }
+#nav-pad-ok { grid-area: ok; }
+#nav-pad-back { grid-area: back; }

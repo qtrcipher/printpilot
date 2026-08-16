@@ -48,6 +48,7 @@ export async function updateSettings(configDir: string, patch: SettingsPatch): P
       scanWindowMs: patch.discovery?.scanWindowMs ?? current.discovery.scanWindowMs,
     },
     onboardingSeen: patch.onboardingSeen ?? current.onboardingSeen,
+    onScreenPad: patch.onScreenPad ?? current.onScreenPad,
   };
   await saveSettings(configDir, next);
   return next;

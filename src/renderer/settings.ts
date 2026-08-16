@@ -61,6 +61,7 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
   const view = el('#settings-view');
   const backButton = el<HTMLButtonElement>('#settings-back');
   const themeSelect = el<HTMLSelectElement>('#theme-select');
+  const onScreenPadSelect = el<HTMLSelectElement>('#onscreen-pad-select');
   const remapList = el<HTMLUListElement>('#remap-list');
   const remapReset = el<HTMLButtonElement>('#remap-reset');
   const scanWindowInput = el<HTMLInputElement>('#scan-window-input');
@@ -224,6 +225,19 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
       .catch((err: unknown) => deps.showToast(err instanceof Error ? err.message : String(err)));
   });
 
+  onScreenPadSelect.addEventListener('change', () => {
+    const bridge = deps.getBridge();
+    if (!bridge) return;
+    const onScreenPad = onScreenPadSelect.value as SettingsFile['onScreenPad'];
+    void bridge
+      .updateSettings({ onScreenPad })
+      .then((updated) => {
+        settings = updated;
+        deps.onSettingsChanged(updated);
+      })
+      .catch((err: unknown) => deps.showToast(err instanceof Error ? err.message : String(err)));
+  });
+
   remapReset.addEventListener('click', () => {
     remapReset.disabled = true;
     void saveGamepad({})
@@ -306,6 +320,7 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
     open(next: SettingsFile) {
       settings = next;
       themeSelect.value = next.theme;
+      onScreenPadSelect.value = next.onScreenPad;
       scanWindowInput.value = String(next.discovery.scanWindowMs);
       versionLabel.textContent = `v${deps.getAppInfo()?.version ?? '?'}`;
       logPathLabel.textContent = deps.getAppInfo()?.logFilePath ?? '';

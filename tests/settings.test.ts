@@ -145,3 +145,25 @@ describe('onboarding flag logic', () => {
     expect((await loadSettings(dir)).onboardingSeen).toBe(true);
   });
 });
+
+describe('on-screen pad setting', () => {
+  it('defaults to show and fills show for older files without the field', async () => {
+    expect(defaultSettings().onScreenPad).toBe('show');
+    await writeFile(settingsPath(dir), JSON.stringify({ version: 2, onboardingSeen: true }));
+    expect((await loadSettings(dir)).onScreenPad).toBe('show');
+  });
+
+  it('rejects garbage values instead of silently keeping them', () => {
+    expect(() => sanitizeSettings({ onScreenPad: 'auto' })).toThrow(SettingsValidationError);
+    expect(() => sanitizeSettings({ onScreenPad: 1 })).toThrow(SettingsValidationError);
+    expect(sanitizeSettings({ onScreenPad: 'hide' }).onScreenPad).toBe('hide');
+  });
+
+  it('persists show/hide via updateSettings and validates the patch at the IPC boundary', async () => {
+    const updated = await updateSettings(dir, { onScreenPad: 'hide' });
+    expect(updated.onScreenPad).toBe('hide');
+    expect((await loadSettings(dir)).onScreenPad).toBe('hide');
+    expect(() => validateSettingsPatch({ onScreenPad: 'sometimes' })).toThrow(/onScreenPad/);
+    expect(validateSettingsPatch({ onScreenPad: 'show' })).toEqual({ onScreenPad: 'show' });
+  });
+});

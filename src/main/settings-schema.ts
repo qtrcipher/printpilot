@@ -96,6 +96,9 @@ export function describeBinding(binding: GamepadBinding): string {
 
 export type ThemeSetting = 'dark' | 'light' | 'system';
 
+/** On-screen navigation pad visibility in the control view (default: shown). */
+export type OnScreenPadSetting = 'show' | 'hide';
+
 export interface WindowState {
   width: number;
   height: number;
@@ -116,6 +119,7 @@ export interface SettingsFile {
   };
   /** First-run welcome shown until dismissed (design doc §7). */
   onboardingSeen: boolean;
+  onScreenPad: OnScreenPadSetting;
 }
 
 export const SETTINGS_VERSION = 2;
@@ -154,6 +158,7 @@ export function defaultSettings(): Omit<SettingsFile, 'version'> {
     window: { width: 1024, height: 720, maximized: false },
     discovery: { mdnsEnabled: true, snmpEnabled: true, scanWindowMs: 5000 },
     onboardingSeen: false,
+    onScreenPad: 'show',
   };
 }
 
@@ -221,7 +226,7 @@ function sanitizeDiscovery(value: unknown): SettingsFile['discovery'] {
  */
 export function sanitizeSettings(data: Record<string, unknown>): Omit<SettingsFile, 'version'> {
   const defaults = defaultSettings();
-  const { theme, keyboardScheme, onboardingSeen } = data;
+  const { theme, keyboardScheme, onboardingSeen, onScreenPad } = data;
   if (theme !== undefined && theme !== 'dark' && theme !== 'light' && theme !== 'system') {
     fail('theme');
   }
@@ -231,6 +236,9 @@ export function sanitizeSettings(data: Record<string, unknown>): Omit<SettingsFi
   if (onboardingSeen !== undefined && typeof onboardingSeen !== 'boolean') {
     fail('onboardingSeen');
   }
+  if (onScreenPad !== undefined && onScreenPad !== 'show' && onScreenPad !== 'hide') {
+    fail('onScreenPad');
+  }
   return {
     theme: theme ?? defaults.theme,
     gamepad: sanitizeGamepad(data.gamepad),
@@ -238,6 +246,7 @@ export function sanitizeSettings(data: Record<string, unknown>): Omit<SettingsFi
     window: sanitizeWindow(data.window),
     discovery: sanitizeDiscovery(data.discovery),
     onboardingSeen: onboardingSeen ?? defaults.onboardingSeen,
+    onScreenPad: onScreenPad ?? defaults.onScreenPad,
   };
 }
 
@@ -247,6 +256,7 @@ export interface SettingsPatch {
   gamepad?: Partial<Record<GamepadAction, GamepadBinding>>;
   discovery?: { scanWindowMs?: number };
   onboardingSeen?: boolean;
+  onScreenPad?: OnScreenPadSetting;
 }
 
 export function validateSettingsPatch(input: unknown): SettingsPatch {
@@ -282,6 +292,12 @@ export function validateSettingsPatch(input: unknown): SettingsPatch {
   if (raw.onboardingSeen !== undefined) {
     if (typeof raw.onboardingSeen !== 'boolean') throw new Error('onboardingSeen must be a boolean');
     patch.onboardingSeen = raw.onboardingSeen;
+  }
+  if (raw.onScreenPad !== undefined) {
+    if (raw.onScreenPad !== 'show' && raw.onScreenPad !== 'hide') {
+      throw new Error('onScreenPad must be show or hide');
+    }
+    patch.onScreenPad = raw.onScreenPad;
   }
   return patch;
 }

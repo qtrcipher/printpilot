@@ -131,6 +131,7 @@ const controlView = createControlView({
   getBridge: () => bridge,
   showToast,
   getNavConfig: buildNavConfig,
+  getOnScreenPadVisible: () => settings?.onScreenPad !== 'hide',
   onExit: () => {
     homeView.hidden = false;
     scanButton.focus();
@@ -152,6 +153,7 @@ const settingsView = createSettingsView({
     settings = updated;
     applyTheme(updated.theme);
     scanWindowMs = updated.discovery.scanWindowMs;
+    controlView.setPadVisible(updated.onScreenPad === 'show');
   },
   onShowWelcome: () => {
     reshowingWelcome = true;

@@ -61,6 +61,32 @@ export function mapKeyToNavEvent(key: string): NavEvent | null {
   }
 }
 
+const NAV_DIRECTIONS: readonly NavDirection[] = ['up', 'down', 'left', 'right'];
+
+/**
+ * Validate an untrusted NavEvent arriving over IPC (shell → guest, e.g. the
+ * on-screen D-pad). Returns null for anything malformed. The `leave` event
+ * is shell-internal and deliberately not accepted here.
+ */
+export function sanitizeNavEvent(value: unknown): NavEvent | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  switch (raw.type) {
+    case 'move':
+      return NAV_DIRECTIONS.includes(raw.direction as NavDirection)
+        ? { type: 'move', direction: raw.direction as NavDirection }
+        : null;
+    case 'step':
+      return raw.delta === 1 || raw.delta === -1 ? { type: 'step', delta: raw.delta } : null;
+    case 'activate':
+      return { type: 'activate' };
+    case 'back':
+      return { type: 'back' };
+    default:
+      return null;
+  }
+}
+
 /**
  * Test-double source: `emit` feeds events to all subscribers. Lives in src
  * (not tests) because the Phase 2 control core composes sources the same way

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   mapKeyToNavEvent,
   NavEventBus,
+  sanitizeNavEvent,
   SyntheticInputSource,
   type NavEvent,
 } from '../src/preload/nav-layer';
@@ -90,5 +91,30 @@ describe('NavEventBus', () => {
     bus.stop();
     source.emit({ type: 'activate' });
     expect(events).toEqual([]);
+  });
+});
+
+describe('sanitizeNavEvent', () => {
+  it('accepts well-formed events from the shell (on-screen D-pad)', () => {
+    expect(sanitizeNavEvent({ type: 'move', direction: 'up' })).toEqual({
+      type: 'move',
+      direction: 'up',
+    });
+    expect(sanitizeNavEvent({ type: 'step', delta: -1 })).toEqual({ type: 'step', delta: -1 });
+    expect(sanitizeNavEvent({ type: 'activate' })).toEqual({ type: 'activate' });
+    expect(sanitizeNavEvent({ type: 'back' })).toEqual({ type: 'back' });
+  });
+
+  it('rejects malformed payloads instead of trusting IPC input', () => {
+    expect(sanitizeNavEvent(null)).toBeNull();
+    expect(sanitizeNavEvent('move')).toBeNull();
+    expect(sanitizeNavEvent({ type: 'move', direction: 'north' })).toBeNull();
+    expect(sanitizeNavEvent({ type: 'move' })).toBeNull();
+    expect(sanitizeNavEvent({ type: 'step', delta: 2 })).toBeNull();
+    expect(sanitizeNavEvent({ type: 'nope' })).toBeNull();
+  });
+
+  it('does not accept leave — it is shell-internal, not IPC-reachable', () => {
+    expect(sanitizeNavEvent({ type: 'leave' })).toBeNull();
   });
 });

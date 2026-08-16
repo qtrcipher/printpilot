@@ -2,6 +2,7 @@ import { isLoginUrl } from '../main/adapters';
 import type { GamepadMapping } from '../main/settings-schema';
 import type { ConnectResult, ConnectTargetInput, PrintPilotBridge } from '../preload/index';
 import type { NavEvent } from '../preload/nav-layer';
+import { createDPad } from './dpad';
 
 /**
  * Control view (design doc §7): embeds the printer's Remote UI in a
@@ -31,6 +32,8 @@ export interface ControlViewDeps {
   showToast(message: string): void;
   /** Resolved gamepad mapping + key overrides for the guest nav layer. */
   getNavConfig?(): NavInputConfig;
+  /** Settings toggle: on-screen navigation pad shown (default true). */
+  getOnScreenPadVisible?(): boolean;
   /** Called when the user returns to Home. */
   onExit(): void;
 }
@@ -39,6 +42,8 @@ export interface ControlView {
   connect(target: ConnectTargetInput): Promise<void>;
   /** True while the control view is on screen. */
   readonly active: boolean;
+  /** Live-update the on-screen pad when the settings toggle changes. */
+  setPadVisible(visible: boolean): void;
   /** Debug menu (dev builds): open the embedded page's DevTools. */
   openGuestDevTools(): void;
 }
@@ -57,6 +62,7 @@ const KEYBOARD_HINTS: ReadonlyArray<readonly [string, string]> = [
   ['Esc', 'Back'],
   ['Tab', 'Next item'],
   ['Ctrl+`', 'App ⇄ Page'],
+  ['Pad', 'Bottom-right'],
 ];
 
 const GAMEPAD_HINTS: ReadonlyArray<readonly [string, string]> = [
@@ -64,6 +70,7 @@ const GAMEPAD_HINTS: ReadonlyArray<readonly [string, string]> = [
   ['Ⓐ', 'Select'],
   ['Ⓑ', 'Back'],
   ['Ctrl+`', 'App ⇄ Page'],
+  ['Pad', 'Bottom-right'],
 ];
 
 export function createControlView(deps: ControlViewDeps): ControlView {
@@ -95,6 +102,21 @@ export function createControlView(deps: ControlViewDeps): ControlView {
   // Chromium fires dom-ready for its built-in error page after did-fail-load;
   // this flag keeps the shell error banner from being overwritten by it.
   let loadFailed = false;
+
+  // On-screen navigation pad: pointer events become NavEvents and are
+  // forwarded to the guest over the same channel as nav:config.
+  const pad = createDPad({
+    onEvent: (event) => {
+      if (webview && typeof webview.send === 'function') webview.send('nav:event', event);
+    },
+  });
+  let padEnabled = true;
+
+  function updatePadVisibility(): void {
+    pad.setVisible(!view.hidden && padEnabled);
+  }
+
+  (webviewHost.parentElement ?? view).append(pad.element);
 
   function show(state: ControlState): void {
     loading.hidden = state !== 'loading';
@@ -218,6 +240,8 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     target = nextTarget;
     hideOffer();
     view.hidden = false;
+    padEnabled = deps.getOnScreenPadVisible?.() ?? true;
+    updatePadVisibility();
     nameLabel.textContent = nextTarget.nickname;
     hostLabel.textContent =
       nextTarget.port && nextTarget.port !== 80
@@ -262,6 +286,7 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     target = null;
     hideOffer();
     view.hidden = true;
+    updatePadVisibility();
     deps.onExit();
   }
 
@@ -295,6 +320,10 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     connect,
     get active() {
       return !view.hidden;
+    },
+    setPadVisible(visible) {
+      padEnabled = visible;
+      updatePadVisibility();
     },
     openGuestDevTools() {
       webview?.openDevTools();

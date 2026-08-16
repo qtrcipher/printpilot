@@ -5,6 +5,7 @@ import {
   KeyboardInputSource,
   LoginWatcher,
   NavEventBus,
+  sanitizeNavEvent,
   type InputSource,
   type NavEvent,
 } from './nav-layer';
@@ -53,19 +54,28 @@ function startNavLayer(config: NavConfig): void {
   });
   ring.start();
 
-  bus = new NavEventBus([
-    new KeyboardInputSource(window, config.keyMap ?? {}),
-    new GamepadInputSource(window, { mapping: config.gamepad ?? DEFAULT_GAMEPAD_MAPPING }),
-  ]);
-  bus.onEvent((event) => {
+  const dispatch = (event: NavEvent): void => {
     if (event.type === 'leave') {
       // No keyboard traps (design doc §7): Ctrl+` hands focus to the shell.
       ipcRenderer.sendToHost('nav:leave');
       return;
     }
     ring?.handle(event);
-  });
+  };
+
+  bus = new NavEventBus([
+    new KeyboardInputSource(window, config.keyMap ?? {}),
+    new GamepadInputSource(window, { mapping: config.gamepad ?? DEFAULT_GAMEPAD_MAPPING }),
+  ]);
+  bus.onEvent(dispatch);
   bus.start();
+
+  // On-screen D-pad: the shell forwards validated pointer events here; they
+  // take the exact same path as keyboard/gamepad input.
+  ipcRenderer.on('nav:event', (_event, payload: unknown) => {
+    const event = sanitizeNavEvent(payload);
+    if (event) dispatch(event);
+  });
 
   loginWatcher = new LoginWatcher(document, adapter.login, (pin) => {
     ipcRenderer.sendToHost('nav:login-submitted', { pin });

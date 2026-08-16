@@ -192,3 +192,48 @@ describe('control view credential offer', () => {
     expect(el('#nav-focus-probe').textContent).toBe('Menu');
   });
 });
+
+describe('control view on-screen D-pad', () => {
+  beforeEach(() => {
+    document.body.innerHTML = CONTROL_MARKUP;
+  });
+
+  it('shows the pad on connect and forwards pad presses to the guest as nav:event', async () => {
+    const bridge = fakeBridge();
+    const view = createControlView({
+      getBridge: () => bridge,
+      showToast: vi.fn(),
+      onExit: vi.fn(),
+    });
+    await view.connect({ nickname: 'Office MF750', host: '192.168.1.50' });
+
+    const pad = el('#nav-pad');
+    expect(pad.hidden).toBe(false);
+
+    const guest = document.querySelector('webview')!;
+    const send = vi.fn();
+    Object.assign(guest, { send });
+    pad.querySelector('#nav-pad-down')!.dispatchEvent(new Event('pointerdown'));
+    expect(send).toHaveBeenCalledWith('nav:event', { type: 'move', direction: 'down' });
+    pad.querySelector('#nav-pad-down')!.dispatchEvent(new Event('pointerup'));
+    pad.querySelector('#nav-pad-ok')!.dispatchEvent(new Event('pointerdown'));
+    expect(send).toHaveBeenCalledWith('nav:event', { type: 'activate' });
+  });
+
+  it('honors the settings toggle (hidden when off, live-updatable)', async () => {
+    const bridge = fakeBridge();
+    const view = createControlView({
+      getBridge: () => bridge,
+      showToast: vi.fn(),
+      getOnScreenPadVisible: () => false,
+      onExit: vi.fn(),
+    });
+    await view.connect({ nickname: 'Office MF750', host: '192.168.1.50' });
+    expect(el('#nav-pad').hidden).toBe(true);
+
+    view.setPadVisible(true);
+    expect(el('#nav-pad').hidden).toBe(false);
+    view.setPadVisible(false);
+    expect(el('#nav-pad').hidden).toBe(true);
+  });
+});
