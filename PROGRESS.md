@@ -25,7 +25,7 @@
 - [x] Public GitHub repo (github.com/qtrcipher/printpilot); GPLv3 LICENSE; `.gitignore` covers secrets BEFORE first commit
 - [x] Tech stack scaffold: Electron + TypeScript (electron-vite) + CI matrix Windows & Linux — `release-automation`
 - [x] App icon + branding (printer + D-pad glyph, palette accents) — `icon-design-guide`
-- [ ] Docker build environment for reproducible builds (Dockerfile written; build verification in progress)
+- [x] Docker build environment for reproducible builds (verified: clean-checkout npm ci + typecheck + 23 tests green in container)
 - [x] Scaffold this file into the repo as `PROGRESS.md` — `ios-ship-gate` (template in its references/)
 
 ## Phase 2 — Features
