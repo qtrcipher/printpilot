@@ -1,0 +1,146 @@
+/* Design tokens — design doc §8 dark palette. */
+:root {
+  --bg: #0f172a;
+  --surface: #1b2336;
+  --muted: #272f42;
+  --border: #475569;
+  --text: #f8fafc;
+  --muted-text: #94a3b8;
+  --primary: #1e293b;
+  --success: #22c55e;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --focus-ring: #60a5fa;
+
+  --font-body: 'Inter', system-ui, 'Segoe UI', Roboto, 'Noto Sans', 'Ubuntu', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Hard requirement (design doc §7): visible focus ring on every
+   interactive element. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.home {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 32px;
+  gap: 24px;
+}
+
+.home__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.home__subtitle {
+  margin: 4px 0 0;
+  color: var(--muted-text);
+}
+
+.home__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.empty-state {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 48px 32px;
+  text-align: center;
+}
+
+.empty-state__heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.empty-state__hint {
+  margin: 8px 0 0;
+  color: var(--muted-text);
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeleton-row {
+  height: 56px;
+  border-radius: 8px;
+  background: var(--muted);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.home__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.home__version {
+  margin-left: auto;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.btn {
+  font: inherit;
+  font-weight: 500;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.btn--primary {
+  background: var(--primary);
+  color: var(--text);
+}
+
+.btn--primary:hover:not(:disabled) {
+  border-color: var(--focus-ring);
+}
+
+.btn--secondary {
+  background: transparent;
+  color: var(--muted-text);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PrintPilot</title>
+  </head>
+  <body>
+    <main class="home" id="app">
+      <header class="home__header">
+        <h1 class="home__title">PrintPilot</h1>
+        <p class="home__subtitle">Printer menu recovery console — LAN-only, no telemetry.</p>
+      </header>
+
+      <section class="home__body" aria-live="polite">
+        <div class="skeleton-list" id="scan-skeleton" hidden>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+
+        <div class="empty-state" id="empty-state">
+          <p class="empty-state__heading">No printers found yet</p>
+          <p class="empty-state__hint">
+            Scan your local network, or add a printer manually by its IP address.
+          </p>
+        </div>
+      </section>
+
+      <footer class="home__actions">
+        <button type="button" class="btn btn--primary" id="scan-button">Scan for printers</button>
+        <button type="button" class="btn btn--secondary" id="add-ip-button" disabled>
+          Add by IP
+        </button>
+        <p class="home__version mono" id="version-label"></p>
+      </footer>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

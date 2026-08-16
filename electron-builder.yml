@@ -1,0 +1,30 @@
+appId: io.github.printpilot.printpilot
+productName: PrintPilot
+copyright: Copyright © 2026 PrintPilot contributors
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+# No publish config: releases are manual until Phase 4.
+
+win:
+  icon: build/icon.png
+  target:
+    - nsis
+    - portable
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  icon: build/icon.png
+  category: Utility
+  target:
+    - AppImage
+    - deb

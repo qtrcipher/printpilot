@@ -1,0 +1,13 @@
+.git
+node_modules
+out
+release
+dist
+*.log
+.env*
+.github
+docs
+PROGRESS.md
+AGENTS.md
+Dockerfile
+.dockerignore
