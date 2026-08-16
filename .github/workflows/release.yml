@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build everything, upload as workflow artifacts only — no GitHub Release'
+        type: boolean
+        default: true
+
+# Default read-only; the release job escalates to contents: write for itself.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Electron runtime deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libnss3 libasound2t64 libgbm1 xvfb
+
+      - run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: E2E tests (Linux, headless X)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
+
+      - name: E2E tests (Windows)
+        if: runner.os == 'Windows'
+        run: npm run test:e2e
+
+      - name: Package
+        run: npm run build && npx electron-builder --publish never
+
+      - name: Generate SHA256SUMS.txt
+        working-directory: release
+        run: |
+          node -e "
+            const fs = require('fs'), crypto = require('crypto');
+            const outFile = 'SHA256SUMS-${{ matrix.platform }}.txt';
+            const files = fs.readdirSync('.')
+              .filter((f) => fs.statSync(f).isFile() && f !== outFile)
+              .sort();
+            if (files.length === 0) { console.error('no build artifacts found'); process.exit(1); }
+            const out = files
+              .map((f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex') + '  ' + f)
+              .join('\n') + '\n';
+            fs.writeFileSync(outFile, out);
+            console.log(out);
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: printpilot-${{ matrix.platform }}
+          path: release/*
+          retention-days: 14
+
+  release:
+    name: GitHub Release
+    needs: build
+    # Tag pushes only — never on workflow_dispatch (dry-run or otherwise).
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Collect artifacts from both platforms
+        uses: actions/download-artifact@v4
+        with:
+          pattern: printpilot-*
+          merge-multiple: true
+          path: dist
+
+      - name: Extract release notes from CHANGELOG.md
+        run: node scripts/bump-version.mjs extract "${GITHUB_REF_NAME#v}" > release-body.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-body.md
+          generate_release_notes: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+          files: dist/*

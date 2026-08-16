@@ -1,6 +1,6 @@
 # PrintPilot
 
-![CI](https://github.com/printpilot/printpilot/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/qtrcipher/printpilot/actions/workflows/ci.yml/badge.svg)
 `tests: 172 unit + 12 e2e passing`
 
 PrintPilot is an open source desktop app (Windows + Linux) for operating a
@@ -32,6 +32,16 @@ LAN-only. No accounts, no sync, no telemetry.
 Phases 0–3 complete (design, foundation, discovery/control, hardening). The
 app is functional against mock Canon fixtures; real-device fixture recordings
 are the next milestone — see `PROGRESS.md`.
+
+## Install
+
+Download prebuilt packages from
+[GitHub Releases](https://github.com/qtrcipher/printpilot/releases):
+Windows (NSIS installer or portable `.exe`) and Linux (AppImage or `.deb`).
+Each release ships per-platform `SHA256SUMS-*.txt` files so you can verify
+the download.
+
+To build from source instead:
 
 ## Quick start
 
@@ -71,6 +81,7 @@ progress in `PROGRESS.md`; the validated design is in
 
 - Security audit: `docs/security-audit-2026-08-17.md`
 - Decisions: `docs/decisions/no-telemetry.md`
+- Release process: `RELEASE.md`
 
 ## License
 
