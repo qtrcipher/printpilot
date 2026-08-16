@@ -60,6 +60,7 @@
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
+- 2026-08-17 — On-screen D-pad added (third InputSource: pointer, arrows+OK+Back, hold repeat, settings toggle); release dry-run artifacts verified by download (real nsis/portable/AppImage/deb + valid SHA256SUMS). 199 unit + 13 e2e — next: real MF750 fixtures, then v0.1.0
 - 2026-08-17 — Phase 4 COMPLETE: release.yml (tag→release w/ SHA256SUMS, dry-run verified), CHANGELOG, bump-version script, RELEASE.md. 182 unit + 12 e2e — next: Phase 5 gap = real MF750 fixtures; then v0.1.0 tag (needs user go-ahead)
 - 2026-08-17 — Phase 3 COMPLETE: logging+redaction, local crash capture, security audit (13 fixed), docs + fixture recorder. 172 unit + 12 e2e green; CI matrix green after fixing a real settings-close clobber bug + Windows shebang issue — next: record real MF750 fixtures (needs the printer on LAN), then Phase 4 packaging
 - 2026-08-17 — Phase 2 COMPLETE: discovery (mDNS/SNMP), profiles+safeStorage, control view + nav layer (keyboard/gamepad), adapters, settings+remap, onboarding, a11y, debug menu. 137 unit + 9 e2e green — next: record real MF750 fixtures (needs the printer on LAN), then Phase 3 hardening
