@@ -29,12 +29,12 @@
 - [x] Scaffold this file into the repo as `PROGRESS.md` — `ios-ship-gate` (template in its references/)
 
 ## Phase 2 — Features
-- [ ] Core features (from design doc §1/§3): LAN printer discovery (mDNS + SNMP sysDescr, manual IP fallback),
+- [x] Core features (from design doc §1/§3): LAN printer discovery (mDNS + SNMP sysDescr, manual IP fallback),
       multi-printer profiles (keychain credentials), control view (embedded Remote UI + status strip + hint bar),
       keyboard/gamepad navigation layer, per-model adapter manifests (canon-mf750 first)
-- [ ] Onboarding + in-app guides (connect-first-printer flow)
-- [ ] Accessibility (keyboard navigation, screen-reader labels)
-- [ ] Developer debug menu — debug builds only
+- [x] Onboarding + in-app guides (connect-first-printer flow)
+- [x] Accessibility (keyboard navigation, screen-reader labels, aria-live announcements, reduced-motion)
+- [x] Developer debug menu — debug builds only
 
 ## Phase 3 — Hardening
 - [ ] Structured logging + opt-in crash reporting — `error-monitoring`
@@ -60,6 +60,7 @@
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
+- 2026-08-17 — Phase 2 COMPLETE: discovery (mDNS/SNMP), profiles+safeStorage, control view + nav layer (keyboard/gamepad), adapters, settings+remap, onboarding, a11y, debug menu. 137 unit + 9 e2e green — next: record real MF750 fixtures (needs the printer on LAN), then Phase 3 hardening
 - 2026-08-17 — CI matrix green (win+ubuntu) after two fixes: author email for deb, `--publish never` — Phase 1 COMPLETE — next: Phase 2 core features (discovery, control view, nav layer)
 - 2026-08-16 — Phase 1 nearly done: Electron+TS scaffold (23 unit + e2e green), GPLv3, public repo github.com/qtrcipher/printpilot live, icon, CI matrix — next: verify Docker build, then Phase 2 core features
 - 2026-08-16 — scaffolded roadmap; Phase 0 COMPLETE (gate passed): scope=recovery console, Canon-first, Electron; design doc `docs/plans/2026-08-16-printpilot-design.md` — next: Phase 1 repo + stack scaffold
