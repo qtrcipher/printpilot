@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { AdapterManifest } from '../main/adapters';
 import type { DiscoveredPrinter, ManualCheckResult } from '../main/discovery';
 import type { PrinterProfile } from '../main/profiles';
 
 /**
  * Typed bridge between main and the shell renderer.
- * The control-webview preload (nav-layer injection) is a separate Phase 2
- * preload; this one only serves the shell UI.
+ * The control-webview preload (src/preload/webview.ts) is a separate preload
+ * injected into the embedded Remote UI page; this one only serves the shell.
  */
 
 export interface AppInfo {
@@ -28,6 +29,28 @@ export interface NewProfileInput {
   adapter: string;
 }
 
+/** A printer the control view should connect to (profile or discovered). */
+export interface ConnectTargetInput {
+  nickname: string;
+  host: string;
+  port?: number;
+  vendor?: string;
+  model?: string;
+  adapter?: string;
+  /** Saved profile id — enables the credential offer + lastConnected. */
+  profileId?: string;
+}
+
+export interface ConnectResult {
+  /** Remote UI root URL to load in the webview. */
+  url: string;
+  /** file:// URL of the guest nav-layer preload. */
+  preloadUrl: string;
+  adapter: AdapterManifest;
+  /** false = unknown layout; generic focus ring, still usable (design §5). */
+  adapterMatched: boolean;
+}
+
 export interface PrintPilotBridge {
   getAppInfo(): Promise<AppInfo>;
 
@@ -44,6 +67,9 @@ export interface PrintPilotBridge {
   renameProfile(id: string, nickname: string): Promise<PublicProfile | null>;
   setProfileCredential(id: string, secret: string): Promise<void>;
   getProfileCredential(id: string): Promise<string | null>;
+
+  connectPrinter(target: ConnectTargetInput): Promise<ConnectResult>;
+  openExternal(url: string): Promise<void>;
 }
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -72,6 +98,9 @@ const bridge: PrintPilotBridge = {
     ipcRenderer.invoke('profiles:set-credential', id, secret) as Promise<void>,
   getProfileCredential: (id) =>
     ipcRenderer.invoke('profiles:get-credential', id) as Promise<string | null>,
+
+  connectPrinter: (target) => ipcRenderer.invoke('control:connect', target) as Promise<ConnectResult>,
+  openExternal: (url) => ipcRenderer.invoke('control:open-external', url) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('printpilot', bridge);

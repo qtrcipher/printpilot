@@ -68,7 +68,6 @@
           </button>
         </form>
 
-        <p class="toast" id="toast" role="status" hidden></p>
       </section>
 
       <footer class="home__actions">
@@ -77,6 +76,56 @@
         <p class="home__version mono" id="version-label"></p>
       </footer>
     </main>
+
+    <!-- Control view (design doc §7): status strip + embedded Remote UI +
+         persistent hint bar. Four states: loading splash, success (webview),
+         error banner (Retry / open in browser), adapter-mismatch notice. -->
+    <section class="control" id="control-view" hidden>
+      <header class="control__strip">
+        <button type="button" class="btn btn--secondary" id="control-back">&larr; Home</button>
+        <span class="status-dot status-dot--offline" id="control-dot" title="Connecting"></span>
+        <span class="control__name" id="control-name"></span>
+        <span class="control__host mono" id="control-host"></span>
+        <span class="control__page" id="control-page"></span>
+      </header>
+
+      <p class="control__notice" id="control-adapter-notice" hidden>
+        Unknown printer layout — generic navigation is active. Everything still works; movement may
+        be less precise.
+      </p>
+
+      <div class="control__body">
+        <div class="state-panel" id="control-loading">
+          <p class="state-panel__heading" id="control-loading-name">Connecting…</p>
+          <p class="state-panel__hint">Opening the printer's Remote UI.</p>
+        </div>
+
+        <div class="state-panel" id="control-error" hidden>
+          <p class="state-panel__heading">Can't reach the printer</p>
+          <p class="state-panel__hint" id="control-error-message"></p>
+          <div class="control__error-actions">
+            <button type="button" class="btn btn--primary" id="control-retry">Retry</button>
+            <button type="button" class="btn btn--secondary" id="control-open-browser">
+              Open in browser
+            </button>
+          </div>
+        </div>
+
+        <div class="control__webview-host" id="control-webview-host" hidden></div>
+      </div>
+
+      <div class="control__offer" id="credential-offer" role="alert" hidden>
+        <span id="credential-offer-text"></span>
+        <button type="button" class="btn btn--primary" id="credential-save">Save PIN</button>
+        <button type="button" class="btn btn--secondary" id="credential-dismiss">Not now</button>
+      </div>
+
+      <footer class="hint-bar" id="hint-bar" aria-label="Input hints"></footer>
+      <!-- aria-live mirror of the in-page focus ring (screen readers + e2e). -->
+      <span class="visually-hidden" id="nav-focus-probe" aria-live="polite"></span>
+    </section>
+
+    <p class="toast" id="toast" role="status" hidden></p>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

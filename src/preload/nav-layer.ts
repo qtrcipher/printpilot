@@ -6,16 +6,19 @@
  * inside the printer's Remote UI. Tests inject a `SyntheticInputSource`
  * instead of real hardware (house rule: no physical printer/gamepad in CI).
  *
- * Phase 1: interfaces + the synthetic source + key mapping only. The focus
- * ring engine, gamepad loop, and webview injection are Phase 2.
+ * Phase 2: interfaces + synthetic source (tests), keyboard/gamepad sources,
+ * the roving-focus ring engine, and Remote UI login detection. The webview
+ * preload (src/preload/webview.ts) composes these inside the embedded page.
  */
 
 export type NavDirection = 'up' | 'down' | 'left' | 'right';
 
 export type NavEvent =
-  | { type: 'move'; direction: NavDirection }
+  | { type: 'move'; direction: NavDirection } // arrows / D-pad / stick (spatial)
+  | { type: 'step'; delta: 1 | -1 } // Tab / Shift+Tab (sequential, visual order)
   | { type: 'activate' } // Enter / gamepad A
-  | { type: 'back' }; // Esc / gamepad B
+  | { type: 'back' } // Esc / gamepad B
+  | { type: 'leave' }; // Ctrl+` — move focus out of the page to the shell chrome
 
 export type NavEventHandler = (event: NavEvent) => void;
 
@@ -109,6 +112,490 @@ export class NavEventBus implements InputSource {
   }
 }
 
-// TODO(Phase 2): KeyboardInputSource (DOM keydown -> mapKeyToNavEvent) and
-// GamepadInputSource (requestAnimationFrame Gamepad API poll, D-pad/stick ->
-// move, A -> activate, B -> back) implementing InputSource.
+/* ---------------------------------------------------------------------------
+ * Phase 2: real input sources + roving-focus ring (design doc §3).
+ * Everything below uses only DOM APIs (no Electron imports) so Vitest +
+ * jsdom exercises it directly; src/preload/webview.ts wires it into the
+ * embedded Remote UI page.
+ * ------------------------------------------------------------------------- */
+
+/** Keychord that moves focus out of the embedded page to the shell chrome. */
+export const LEAVE_KEY = '`'; // with Ctrl
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target.isContentEditable)
+  );
+}
+
+/**
+ * DOM keydown source. Arrows/Enter/Escape follow mapKeyToNavEvent;
+ * Tab/Shift+Tab are sequential steps (tab order = visual order, design §7).
+ * While the caret is in an editable field, arrows/Enter/Tab keep their
+ * native form behavior — only Escape and the leave keychord are hijacked,
+ * so login forms stay usable.
+ */
+export class KeyboardInputSource implements InputSource {
+  readonly kind = 'keyboard' as const;
+  private handlers: NavEventHandler[] = [];
+  private running = false;
+  private readonly listener = (event: KeyboardEvent): void => this.onKeydown(event);
+
+  constructor(private readonly target: Window) {}
+
+  start(): void {
+    if (this.running) return;
+    this.running = true;
+    this.target.addEventListener('keydown', this.listener, true);
+  }
+
+  stop(): void {
+    if (!this.running) return;
+    this.running = false;
+    this.target.removeEventListener('keydown', this.listener, true);
+  }
+
+  onEvent(handler: NavEventHandler): void {
+    this.handlers.push(handler);
+  }
+
+  private onKeydown(event: KeyboardEvent): void {
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key === LEAVE_KEY) {
+      event.preventDefault();
+      this.dispatch({ type: 'leave' });
+      return;
+    }
+    if (event.ctrlKey || event.altKey || event.metaKey) return; // browser chords pass through
+    if (isEditableTarget(event.target)) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.dispatch({ type: 'back' });
+      }
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      this.dispatch({ type: 'step', delta: event.shiftKey ? -1 : 1 });
+      return;
+    }
+    const navEvent = mapKeyToNavEvent(event.key);
+    if (navEvent) {
+      event.preventDefault();
+      this.dispatch(navEvent);
+    }
+  }
+
+  private dispatch(event: NavEvent): void {
+    for (const handler of this.handlers) handler(event);
+  }
+}
+
+export interface GamepadDeps {
+  /** Defaults to navigator.getGamepads. */
+  getGamepads?: () => readonly (GamepadLike | null)[];
+  /** Frame pump — defaults to requestAnimationFrame on the given window. */
+  requestFrame?: (cb: () => void) => number;
+  cancelFrame?: (handle: number) => void;
+  now?: () => number;
+}
+
+/** Minimal shape so tests can feed synthetic pads without the real Gamepad type. */
+export interface GamepadLike {
+  buttons: ReadonlyArray<{ pressed: boolean }>;
+  axes: readonly number[];
+}
+
+export const GAMEPAD_DEADZONE = 0.4;
+export const GAMEPAD_REPEAT_MS = 150;
+
+const BUTTON_ACTIVATE = 0; // A
+const BUTTON_BACK = 1; // B
+const DPAD: ReadonlyArray<[number, NavDirection]> = [
+  [12, 'up'],
+  [13, 'down'],
+  [14, 'left'],
+  [15, 'right'],
+];
+
+function directionFromPad(pad: GamepadLike, deadzone: number): NavDirection | null {
+  for (const [index, direction] of DPAD) {
+    if (pad.buttons[index]?.pressed) return direction;
+  }
+  const x = pad.axes[0] ?? 0;
+  const y = pad.axes[1] ?? 0;
+  if (Math.max(Math.abs(x), Math.abs(y)) < deadzone) return null;
+  return Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : y > 0 ? 'down' : 'up';
+}
+
+/**
+ * Gamepad API polling source (design doc §3): D-pad/left-stick → focus move
+ * with ~150ms auto-repeat, button 0 (A) → activate, button 1 (B) → back.
+ * Rising edge emits immediately; holds repeat. Timing and frame pumping are
+ * injectable so tests drive synthetic pads deterministically.
+ */
+export class GamepadInputSource implements InputSource {
+  readonly kind = 'gamepad' as const;
+  private handlers: NavEventHandler[] = [];
+  private frameHandle: number | null = null;
+  private heldDirection: NavDirection | null = null;
+  private lastMoveAt = 0;
+  private activateHeld = false;
+  private backHeld = false;
+
+  private readonly getGamepads: () => readonly (GamepadLike | null)[];
+  private readonly requestFrame: (cb: () => void) => number;
+  private readonly cancelFrame: (handle: number) => void;
+  private readonly now: () => number;
+
+  constructor(
+    win: Window,
+    deps: GamepadDeps = {},
+    private readonly deadzone = GAMEPAD_DEADZONE,
+    private readonly repeatMs = GAMEPAD_REPEAT_MS,
+  ) {
+    this.getGamepads = deps.getGamepads ?? (() => win.navigator.getGamepads?.() ?? []);
+    this.requestFrame = deps.requestFrame ?? ((cb) => win.requestAnimationFrame(cb));
+    this.cancelFrame = deps.cancelFrame ?? ((handle) => win.cancelAnimationFrame(handle));
+    this.now = deps.now ?? (() => win.performance.now());
+  }
+
+  start(): void {
+    if (this.frameHandle !== null) return;
+    this.pump();
+  }
+
+  stop(): void {
+    if (this.frameHandle !== null) {
+      this.cancelFrame(this.frameHandle);
+      this.frameHandle = null;
+    }
+    this.heldDirection = null;
+    this.activateHeld = false;
+    this.backHeld = false;
+  }
+
+  onEvent(handler: NavEventHandler): void {
+    this.handlers.push(handler);
+  }
+
+  private pump(): void {
+    this.frameHandle = this.requestFrame(() => {
+      this.poll();
+      if (this.frameHandle !== null) this.pump();
+    });
+  }
+
+  /** One poll iteration — exposed for tests that pump frames manually. */
+  poll(): void {
+    const now = this.now();
+    let direction: NavDirection | null = null;
+    let activate = false;
+    let back = false;
+    for (const pad of this.getGamepads()) {
+      if (!pad) continue;
+      direction = direction ?? directionFromPad(pad, this.deadzone);
+      activate = activate || Boolean(pad.buttons[BUTTON_ACTIVATE]?.pressed);
+      back = back || Boolean(pad.buttons[BUTTON_BACK]?.pressed);
+    }
+
+    if (direction) {
+      if (direction !== this.heldDirection) {
+        this.dispatch({ type: 'move', direction });
+        this.lastMoveAt = now;
+      } else if (now - this.lastMoveAt >= this.repeatMs) {
+        this.dispatch({ type: 'move', direction });
+        this.lastMoveAt = now;
+      }
+    }
+    this.heldDirection = direction;
+
+    if (activate && !this.activateHeld) this.dispatch({ type: 'activate' });
+    this.activateHeld = activate;
+    if (back && !this.backHeld) this.dispatch({ type: 'back' });
+    this.backHeld = back;
+  }
+
+  private dispatch(event: NavEvent): void {
+    for (const handler of this.handlers) handler(event);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Roving-focus ring
+ * ------------------------------------------------------------------------- */
+
+export const FOCUS_RING_CLASS = 'printpilot-focus-ring';
+export const FOCUS_RING_STYLE_ID = 'printpilot-focus-ring-style';
+export const FOCUS_RING_COLOR = '#60A5FA';
+
+const INTERACTIVE_SELECTOR = 'a, button, input, select, textarea, [onclick], [tabindex]';
+
+/** Inject the 2px #60A5FA outline rule (design doc §8 focus ring). */
+export function injectFocusRingStyle(doc: Document): void {
+  if (doc.getElementById(FOCUS_RING_STYLE_ID)) return;
+  const style = doc.createElement('style');
+  style.id = FOCUS_RING_STYLE_ID;
+  style.textContent =
+    `.${FOCUS_RING_CLASS} { outline: 2px solid ${FOCUS_RING_COLOR} !important;` +
+    ' outline-offset: 2px !important; }';
+  doc.head.append(style);
+}
+
+function isHidden(element: HTMLElement): boolean {
+  if (element instanceof HTMLInputElement && element.type === 'hidden') return true;
+  for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+    if (node.hidden || node.getAttribute('aria-hidden') === 'true') return true;
+    const display = node.style.display;
+    const visibility = node.style.visibility;
+    if (display === 'none' || visibility === 'hidden' || visibility === 'collapse') return true;
+  }
+  return false;
+}
+
+function isDisabled(element: HTMLElement): boolean {
+  if (element.getAttribute('aria-disabled') === 'true') return true;
+  return (
+    'disabled' in element &&
+    Boolean((element as HTMLButtonElement | HTMLInputElement | HTMLSelectElement).disabled)
+  );
+}
+
+/**
+ * Interactive elements in document (= visual) order, minus hidden/disabled
+ * ones and anything matching the adapter's focus-skip selectors.
+ */
+export function collectFocusable(root: ParentNode, skipSelectors: readonly string[] = []): HTMLElement[] {
+  const skip = skipSelectors.filter((s) => s.trim().length > 0);
+  const matches = [...root.querySelectorAll<HTMLElement>(INTERACTIVE_SELECTOR)];
+  return matches.filter((element) => {
+    if (isHidden(element) || isDisabled(element)) return false;
+    if (skip.length > 0 && skip.some((selector) => element.matches(selector))) return false;
+    return true;
+  });
+}
+
+interface Axis {
+  primary: 'x' | 'y';
+  sign: 1 | -1;
+}
+
+const AXES: Record<NavDirection, Axis> = {
+  right: { primary: 'x', sign: 1 },
+  left: { primary: 'x', sign: -1 },
+  down: { primary: 'y', sign: 1 },
+  up: { primary: 'y', sign: -1 },
+};
+
+function edgeStart(rect: DOMRect, axis: Axis): number {
+  return axis.primary === 'x' ? (axis.sign > 0 ? rect.left : rect.right) : axis.sign > 0 ? rect.top : rect.bottom;
+}
+
+function edgeEnd(rect: DOMRect, axis: Axis): number {
+  return axis.primary === 'x' ? (axis.sign > 0 ? rect.right : rect.left) : axis.sign > 0 ? rect.bottom : rect.top;
+}
+
+function overlapRange(rect: DOMRect, axis: Axis): [number, number] {
+  return axis.primary === 'x' ? [rect.top, rect.bottom] : [rect.left, rect.right];
+}
+
+function center(value: [number, number]): number {
+  return (value[0] + value[1]) / 2;
+}
+
+/**
+ * Score a candidate for a spatial move; null when it is not in the direction.
+ * Cheapest = short primary distance + small perpendicular offset, with a
+ * strong bonus for axis overlap so "straight ahead" wins over diagonals.
+ */
+export function spatialScore(from: DOMRect, to: DOMRect, direction: NavDirection): number | null {
+  const axis = AXES[direction];
+  const gap = (edgeStart(to, axis) - edgeEnd(from, axis)) * axis.sign;
+  if (gap < -2) return null; // not (meaningfully) in that direction
+  const [a1, a2] = overlapRange(from, axis);
+  const [b1, b2] = overlapRange(to, axis);
+  const overlap = Math.min(a2, b2) - Math.max(a1, b1);
+  const perpendicular = Math.abs(center([b1, b2]) - center([a1, a2]));
+  const overlapBonus = overlap > 0 ? 0 : 1000;
+  return Math.max(gap, 0) + perpendicular * 2 + overlapBonus;
+}
+
+export interface FocusRingOptions {
+  /** Adapter focus-skip selectors. */
+  skipSelectors?: readonly string[];
+  /** Root to scan — defaults to document. */
+  root?: ParentNode;
+  /** Called whenever the focused element changes (hint bar / tests). */
+  onFocusChange?: (element: HTMLElement | null) => void;
+}
+
+/**
+ * Roving-focus ring over the embedded page's interactive elements.
+ * Arrow keys move spatially, Tab steps sequentially, Enter activates,
+ * and a MutationObserver keeps the ring valid across DOM changes
+ * (Remote UI pages re-render menus in place).
+ */
+export class FocusRing {
+  private elements: HTMLElement[] = [];
+  private current: HTMLElement | null = null;
+  private observer: MutationObserver | null = null;
+  private rescanQueued = false;
+  private readonly root: ParentNode;
+  private readonly skipSelectors: readonly string[];
+
+  constructor(
+    private readonly doc: Document,
+    private readonly options: FocusRingOptions = {},
+  ) {
+    this.root = options.root ?? doc;
+    this.skipSelectors = options.skipSelectors ?? [];
+  }
+
+  get focused(): HTMLElement | null {
+    return this.current;
+  }
+
+  get count(): number {
+    return this.elements.length;
+  }
+
+  start(): void {
+    injectFocusRingStyle(this.doc);
+    this.rescan();
+    this.observer = new MutationObserver(() => this.queueRescan());
+    this.observer.observe(this.doc.body ?? this.doc.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'style', 'disabled', 'aria-hidden'],
+    });
+    if (!this.current && this.elements.length > 0) this.focusElement(this.elements[0] ?? null);
+  }
+
+  stop(): void {
+    this.observer?.disconnect();
+    this.observer = null;
+    this.focusElement(null);
+  }
+
+  handle(event: NavEvent): void {
+    switch (event.type) {
+      case 'move':
+        this.move(event.direction);
+        break;
+      case 'step':
+        this.step(event.delta);
+        break;
+      case 'activate':
+        this.current?.click();
+        break;
+      case 'back':
+        this.doc.defaultView?.history.back();
+        break;
+      case 'leave':
+        break; // handled by the shell (focus leaves the page)
+    }
+  }
+
+  /** Sequential move in document order; wraps around. */
+  step(delta: 1 | -1): void {
+    if (this.elements.length === 0) return;
+    const index = this.current ? this.elements.indexOf(this.current) : -1;
+    const next = (index + delta + this.elements.length) % this.elements.length;
+    this.focusElement(this.elements[next] ?? null);
+  }
+
+  /** Spatial move; falls back to a sequential step when nothing lies that way. */
+  move(direction: NavDirection): void {
+    if (this.elements.length === 0) return;
+    if (!this.current || !this.elements.includes(this.current)) {
+      this.focusElement(this.elements[0] ?? null);
+      return;
+    }
+    const from = this.current.getBoundingClientRect();
+    let best: { element: HTMLElement; score: number } | null = null;
+    for (const element of this.elements) {
+      if (element === this.current) continue;
+      const score = spatialScore(from, element.getBoundingClientRect(), direction);
+      if (score === null) continue;
+      if (!best || score < best.score) best = { element, score };
+    }
+    if (best) {
+      this.focusElement(best.element);
+    } else {
+      this.step(direction === 'up' || direction === 'left' ? -1 : 1);
+    }
+  }
+
+  /** Re-collect after DOM changes; keeps focus on the same element when it survives. */
+  rescan(): void {
+    this.rescanQueued = false;
+    this.elements = collectFocusable(this.root, this.skipSelectors);
+    if (this.current && !this.elements.includes(this.current)) {
+      // Current element vanished or became inert — land on the nearest survivor.
+      this.focusElement(this.elements[0] ?? null);
+    }
+  }
+
+  private queueRescan(): void {
+    if (this.rescanQueued) return;
+    this.rescanQueued = true;
+    queueMicrotask(() => this.rescan());
+  }
+
+  private focusElement(element: HTMLElement | null): void {
+    if (this.current === element) return;
+    this.current?.classList.remove(FOCUS_RING_CLASS);
+    this.current = element;
+    if (element) {
+      element.classList.add(FOCUS_RING_CLASS);
+      element.focus();
+    }
+    this.options.onFocusChange?.(element);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Remote UI login detection (credential offer, design doc §7 connect flow)
+ * ------------------------------------------------------------------------- */
+
+export interface LoginWatchConfig {
+  formSelector: string;
+  passwordSelector: string;
+}
+
+/**
+ * Watches for the Remote UI login form and reports the PIN when the form is
+ * submitted. Whether the login *succeeded* is decided by the shell (next
+ * navigation leaves the login URL) — this class only captures the attempt.
+ */
+export class LoginWatcher {
+  private readonly listener = (event: Event): void => this.onSubmit(event);
+
+  constructor(
+    private readonly doc: Document,
+    private readonly config: LoginWatchConfig,
+    private readonly onPinSubmitted: (pin: string) => void,
+  ) {}
+
+  start(): void {
+    // Capture phase: fires even if page scripts stopPropagation.
+    this.doc.addEventListener('submit', this.listener, true);
+  }
+
+  stop(): void {
+    this.doc.removeEventListener('submit', this.listener, true);
+  }
+
+  private onSubmit(event: Event): void {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (!form.matches(this.config.formSelector)) return;
+    const field = form.querySelector<HTMLInputElement>(this.config.passwordSelector);
+    const pin = field?.value ?? '';
+    if (pin) this.onPinSubmitted(pin);
+  }
+}

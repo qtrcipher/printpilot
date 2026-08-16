@@ -10,7 +10,12 @@ export default defineConfig({
   preload: {
     build: {
       outDir: 'out/preload',
-      rollupOptions: { input: 'src/preload/index.ts' },
+      rollupOptions: {
+        input: {
+          index: 'src/preload/index.ts', // shell renderer bridge
+          webview: 'src/preload/webview.ts', // guest nav-layer injection
+        },
+      },
     },
   },
   renderer: {

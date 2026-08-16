@@ -1,11 +1,14 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadAdapterManifests } from './adapters-load';
+import { resolveAdapter, type AdapterManifest } from './adapters';
 import { resolveConfigDir } from './config-dir';
 import { createSafeStorageCipher } from './credentials';
 import {
   createOfflineDiscoveryService,
+  DiscoveryService,
   isValidHostname,
   isValidIpv4,
   type DiscoveredPrinter,
@@ -24,13 +27,36 @@ const configDir = resolveConfigDir({
 });
 
 // Deterministic no-network discovery for the Playwright e2e suite (CI has no
-// printers; relying on real mDNS/timeouts there would be flaky).
-const discovery =
-  process.env.PRINTPILOT_FAKE_DISCOVERY === '1'
-    ? createOfflineDiscoveryService()
-    : createDiscoveryService();
+// printers; relying on real mDNS/timeouts there would be flaky). When
+// PRINTPILOT_FAKE_PRINTER_HOST is set, the stub "discovers" one printer so
+// e2e can drive the control view against a local fixture server.
+const discovery = (() => {
+  if (process.env.PRINTPILOT_FAKE_DISCOVERY !== '1') return createDiscoveryService();
+  const fakeHost = process.env.PRINTPILOT_FAKE_PRINTER_HOST;
+  const fakePort = Number.parseInt(process.env.PRINTPILOT_FAKE_PRINTER_PORT ?? '', 10) || 80;
+  if (!fakeHost) return createOfflineDiscoveryService();
+  return new DiscoveryService({
+    mdns: {
+      start: (onUp) => {
+        onUp({ name: 'Fixture Printer', host: fakeHost, port: fakePort, addresses: [fakeHost] });
+      },
+      stop: () => undefined,
+    },
+    http: { getRoot: () => Promise.resolve({ reachable: false, body: '' }) },
+  });
+})();
 
 const profileStore = new ProfileStore(configDir, createSafeStorageCipher());
+
+// Adapter manifests are data files shipped in the bundle (design doc §4);
+// app.getAppPath() is the project root in dev/e2e and the asar root when
+// packaged (adapters/** is included in electron-builder.yml files).
+const adaptersDir = path.join(app.getAppPath(), 'adapters');
+let cachedManifests: AdapterManifest[] | null = null;
+async function adapterManifests(): Promise<AdapterManifest[]> {
+  cachedManifests ??= await loadAdapterManifests(adaptersDir);
+  return cachedManifests;
+}
 
 const scanWindowMs = Number.parseInt(process.env.PRINTPILOT_SCAN_WINDOW_MS ?? '', 10) || 5000;
 
@@ -51,6 +77,7 @@ async function createWindow(): Promise<void> {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true, // control view embeds the Remote UI via <webview>
     },
   });
 
@@ -125,6 +152,36 @@ function registerIpc(): void {
   ipcMain.handle('profiles:get-credential', (_event, id: unknown) =>
     profileStore.getCredential(assertString(id, 'id', 64)),
   );
+
+  // --- Control view (design doc §3: embedded Remote UI) ---------------------
+  ipcMain.handle('control:connect', async (_event, input: unknown) => {
+    const target = validateConnectTarget(input);
+    const manifests = await adapterManifests();
+    const { adapter, matched } = resolveAdapter(manifests, {
+      vendor: target.vendor,
+      model: target.model,
+      adapterId: target.adapter,
+    });
+    if (target.profileId) {
+      // Best-effort bookkeeping; a stale id must not block connecting.
+      await profileStore.touchLastConnected(target.profileId).catch(() => undefined);
+    }
+    return {
+      url: `http://${target.host}:${target.port}/`,
+      preloadUrl: pathToFileURL(path.join(__dirname, '../preload/webview.mjs')).href,
+      adapter,
+      adapterMatched: matched,
+    };
+  });
+
+  ipcMain.handle('control:open-external', (_event, url: unknown) => {
+    const value = assertString(url, 'url', 300);
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('Only http(s) URLs can be opened externally');
+    }
+    return shell.openExternal(value);
+  });
 }
 
 /** The encrypted credential blob never crosses into the renderer. */
@@ -156,6 +213,44 @@ function validateNewProfile(input: unknown): NewProfile {
     model: typeof raw.model === 'string' ? raw.model.slice(0, 80) : '',
     adapter: assertString(raw.adapter, 'adapter', 80),
   };
+}
+
+export interface ConnectTarget {
+  nickname: string;
+  host: string;
+  port: number;
+  vendor: string;
+  model: string;
+  adapter: string;
+  profileId?: string;
+}
+
+function validateConnectTarget(input: unknown): ConnectTarget {
+  if (typeof input !== 'object' || input === null) throw new Error('target must be an object');
+  const raw = input as Record<string, unknown>;
+  const host = assertString(raw.host, 'host', 253);
+  if (!isValidIpv4(host) && !isValidHostname(host)) {
+    throw new Error('host must be an IPv4 address or hostname');
+  }
+  let port = 80;
+  if (raw.port !== undefined) {
+    if (typeof raw.port !== 'number' || !Number.isInteger(raw.port) || raw.port < 1 || raw.port > 65535) {
+      throw new Error('port must be an integer between 1 and 65535');
+    }
+    port = raw.port;
+  }
+  const target: ConnectTarget = {
+    nickname: assertString(raw.nickname, 'nickname', 80),
+    host,
+    port,
+    vendor: typeof raw.vendor === 'string' ? raw.vendor.slice(0, 40) : '',
+    model: typeof raw.model === 'string' ? raw.model.slice(0, 80) : '',
+    adapter: typeof raw.adapter === 'string' ? raw.adapter.slice(0, 80) : '',
+  };
+  if (typeof raw.profileId === 'string' && raw.profileId.trim()) {
+    target.profileId = assertString(raw.profileId, 'profileId', 64);
+  }
+  return target;
 }
 
 function broadcastDiscoveryEvents(): void {

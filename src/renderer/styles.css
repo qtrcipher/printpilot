@@ -20,6 +20,11 @@
   box-sizing: border-box;
 }
 
+/* The hidden attribute must win over component display rules. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -288,4 +293,143 @@ body {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* --- Control view (design doc §7) --------------------------------------- */
+
+.control {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.control__strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.control__name {
+  font-weight: 700;
+}
+
+.control__host {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.control__page {
+  margin-left: auto;
+  color: var(--muted-text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.control__notice {
+  margin: 0;
+  padding: 6px 16px;
+  background: var(--muted);
+  color: var(--warning);
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.control__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.control__body .state-panel {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.control__error-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.control__error-actions .btn {
+  margin-top: 0;
+}
+
+.control__webview-host {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.control__webview {
+  flex: 1;
+  border: none;
+}
+
+.control__offer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--muted);
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.control__offer span {
+  flex: 1;
+}
+
+.hint-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.hint-bar__chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted-text);
+  white-space: nowrap;
+}
+
+.hint-bar__keys {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

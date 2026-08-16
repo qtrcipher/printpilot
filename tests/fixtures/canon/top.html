@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- Mock Canon imageCLASS Remote UI top/status page. See login.html note. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Remote UI: Top Page</title>
+  </head>
+  <body>
+    <header>
+      <h1>Canon imageCLASS MF750 Series</h1>
+      <nav>
+        <a href="/top.html">Status/Cancel</a>
+        <a href="/menu.html">Menu</a>
+        <a href="/login.html">Log Out</a>
+      </nav>
+    </header>
+    <main>
+      <h2>Device Status</h2>
+      <table>
+        <tr><th>Device Name</th><td>MF750 Series (fixture)</td></tr>
+        <tr><th>Status</th><td>Ready</td></tr>
+        <tr><th>Black Toner</th><td>80%</td></tr>
+        <tr><th>Cyan Toner</th><td>65%</td></tr>
+        <tr><th>Magenta Toner</th><td>65%</td></tr>
+        <tr><th>Yellow Toner</th><td>70%</td></tr>
+      </table>
+      <!-- Hidden/disabled controls must be skipped by the focus ring. -->
+      <button type="button" hidden>Firmware Update</button>
+      <button type="button" disabled>Start Job</button>
+      <a href="/menu.html">Open the menu</a>
+    </main>
+  </body>
+</html>

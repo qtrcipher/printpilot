@@ -2,7 +2,8 @@ import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/700.css';
 import { isValidIpv4, type DiscoveredPrinter } from '../main/discovery';
-import type { PrintPilotBridge, PublicProfile } from '../preload/index';
+import type { ConnectTargetInput, PrintPilotBridge, PublicProfile } from '../preload/index';
+import { createControlView } from './control';
 import './styles.css';
 
 /**
@@ -10,8 +11,8 @@ import './styles.css';
  * loading = scan skeleton; error = discovery failure + retry; empty = no
  * printers → guided Add-by-IP with reachability pre-check; success = printer
  * list (saved profiles pinned with status dot, discovered-but-unsaved below
- * with a Save action). Clicking a printer shows a transient toast — the
- * control view lands in the next chunk.
+ * with a Save action). Clicking a printer opens the control view (simple
+ * view switching — no router dep).
  */
 
 declare global {
@@ -28,6 +29,7 @@ function el<T extends HTMLElement>(selector: string): T {
   return node;
 }
 
+const homeView = el('#app');
 const scanButton = el<HTMLButtonElement>('#scan-button');
 const addIpButton = el<HTMLButtonElement>('#add-ip-button');
 const retryButton = el<HTMLButtonElement>('#retry-button');
@@ -75,6 +77,20 @@ function showToast(message: string): void {
   }, 3000);
 }
 
+const controlView = createControlView({
+  getBridge: () => bridge,
+  showToast,
+  onExit: () => {
+    homeView.hidden = false;
+    scanButton.focus();
+  },
+});
+
+function openControl(target: ConnectTargetInput): void {
+  homeView.hidden = true;
+  void controlView.connect(target);
+}
+
 function showError(message: string): void {
   window.clearTimeout(scanTimer);
   errorMessage.textContent = message;
@@ -117,7 +133,7 @@ function describe(printer: { vendor?: string; model?: string }): string {
   return [printer.vendor, printer.model].filter(Boolean).join(' ');
 }
 
-function rowButton(primary: string, secondary: string): HTMLButtonElement {
+function rowButton(primary: string, secondary: string, onOpen: () => void): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'printer-row';
@@ -128,9 +144,7 @@ function rowButton(primary: string, secondary: string): HTMLButtonElement {
   detail.className = 'printer-row__detail mono';
   detail.textContent = secondary;
   button.append(name, detail);
-  button.addEventListener('click', () => {
-    showToast('Control view lands in the next chunk.');
-  });
+  button.addEventListener('click', onOpen);
   return button;
 }
 
@@ -148,6 +162,16 @@ function renderLists(): void {
     const row = rowButton(
       profile.nickname,
       [profile.host, describe(profile)].filter(Boolean).join(' · '),
+      () => {
+        openControl({
+          nickname: profile.nickname,
+          host: profile.host,
+          vendor: profile.vendor,
+          model: profile.model,
+          adapter: profile.adapter,
+          profileId: profile.id,
+        });
+      },
     );
     row.prepend(dot);
     li.append(row);
@@ -165,6 +189,16 @@ function renderLists(): void {
     const row = rowButton(
       printer.hostname ?? printer.host,
       [printer.host, describe(printer)].filter(Boolean).join(' · '),
+      () => {
+        openControl({
+          nickname: printer.hostname || describe(printer) || printer.host,
+          host: printer.host,
+          port: printer.port,
+          vendor: printer.vendor ?? '',
+          model: printer.model ?? '',
+          adapter: printer.vendor === 'canon' ? 'canon-mf750' : '',
+        });
+      },
     );
     const save = document.createElement('button');
     save.type = 'button';

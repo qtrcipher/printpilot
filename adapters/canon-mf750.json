@@ -1,0 +1,25 @@
+{
+  "id": "canon-mf750",
+  "vendor": "canon",
+  "models": [
+    "MF750",
+    "MF751Cdw",
+    "MF752Cdw",
+    "MF753Cdw",
+    "MF754Cdw",
+    "MF755Cdw",
+    "MF756Cx"
+  ],
+  "remoteUiMarkers": ["canon", "remote ui", "/rui/"],
+  "login": {
+    "urlPatterns": ["/login", "login.html", "/rui/login"],
+    "formSelector": "form",
+    "passwordSelector": "input[type=\"password\"]"
+  },
+  "knownPages": [
+    { "name": "top", "urlPatterns": ["^/$", "/top", "top.html"] },
+    { "name": "status", "urlPatterns": ["/status", "status.html"] },
+    { "name": "menu", "urlPatterns": ["/menu", "menu.html"] }
+  ],
+  "focusSkip": []
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<!--
+  Mock Canon imageCLASS Remote UI login page (frames-free modern variant).
+  Modeled on the real structure: "Remote UI" title, Canon branding, and a
+  form-based PIN login posting to /login. NOT recorded from a live MF750 —
+  replace with recorded snapshots once a physical printer is available.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Remote UI</title>
+  </head>
+  <body>
+    <header>
+      <h1>Canon imageCLASS MF750 Series</h1>
+      <p>Remote UI</p>
+    </header>
+    <main>
+      <form action="/login" method="post">
+        <label for="password">System Manager PIN</label>
+        <input type="password" id="password" name="password" />
+        <button type="submit">Log In</button>
+      </form>
+      <p><a href="/top.html">Log in without a PIN (user mode)</a></p>
+    </main>
+  </body>
+</html>
