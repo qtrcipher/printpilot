@@ -42,9 +42,9 @@
 - [x] Docs: README features, CONTRIBUTING, `docs/protocols/canon-remote-ui.md`, fixture recorder script
 
 ## Phase 4 — Packaging & Distribution
-- [ ] Windows installer (MSIX / Inno Setup) — `release-automation`
-- [ ] Linux packages (AppImage / .deb / Flatpak)
-- [ ] GitHub Releases pipeline with checksums + changelog
+- [x] Windows installer (nsis setup + portable; MSIX deferred — store sideloading not needed for v1) — `release-automation`
+- [x] Linux packages (AppImage + .deb; Flatpak deferred — add when a Flathub maintainer story is wanted)
+- [x] GitHub Releases pipeline with checksums + changelog (`release.yml`: tag `v*` → tested builds → release w/ SHA256SUMS; dry-run dispatch verified end-to-end incl. artifacts)
 
 ## Phase 5 — Testing
 - [ ] Tests written WITH each feature (not after)
@@ -60,6 +60,7 @@
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
+- 2026-08-17 — Phase 4 COMPLETE: release.yml (tag→release w/ SHA256SUMS, dry-run verified), CHANGELOG, bump-version script, RELEASE.md. 182 unit + 12 e2e — next: Phase 5 gap = real MF750 fixtures; then v0.1.0 tag (needs user go-ahead)
 - 2026-08-17 — Phase 3 COMPLETE: logging+redaction, local crash capture, security audit (13 fixed), docs + fixture recorder. 172 unit + 12 e2e green; CI matrix green after fixing a real settings-close clobber bug + Windows shebang issue — next: record real MF750 fixtures (needs the printer on LAN), then Phase 4 packaging
 - 2026-08-17 — Phase 2 COMPLETE: discovery (mDNS/SNMP), profiles+safeStorage, control view + nav layer (keyboard/gamepad), adapters, settings+remap, onboarding, a11y, debug menu. 137 unit + 9 e2e green — next: record real MF750 fixtures (needs the printer on LAN), then Phase 3 hardening
 - 2026-08-17 — CI matrix green (win+ubuntu) after two fixes: author email for deb, `--publish never` — Phase 1 COMPLETE — next: Phase 2 core features (discovery, control view, nav layer)
