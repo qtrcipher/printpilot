@@ -194,11 +194,6 @@ export function createControlView(deps: ControlViewDeps): ControlView {
       pageLabel.textContent = event.title;
     });
 
-    guest.addEventListener('new-window', (event) => {
-      // 'new-window' is legacy-typed as a plain Event; it carries the target URL.
-      void deps.getBridge()?.openExternal((event as Event & { url: string }).url);
-    });
-
     guest.addEventListener('ipc-message', (event) => {
       if (event.channel === 'nav:focus-changed') {
         const [label] = event.args as [string];
@@ -209,6 +204,10 @@ export function createControlView(deps: ControlViewDeps): ControlView {
       } else if (event.channel === 'nav:login-submitted') {
         const [{ pin }] = event.args as [{ pin: string }];
         pendingPin = pin;
+      } else if (event.channel === 'log:guest') {
+        // Guest page errors → main's rotating log (design doc §5).
+        const [{ message }] = event.args as [{ message: string }];
+        void deps.getBridge()?.writeLog('error', message);
       }
     });
   }
@@ -247,7 +246,10 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     guest.setAttribute('preload', connection.preloadUrl);
     // Dedicated guest preload (nav layer). nodeIntegration off,
     // contextIsolation on; sandbox must be off for the ESM preload file.
-    guest.setAttribute('webpreferences', 'contextIsolation=yes, nodeIntegration=no, sandbox=no');
+    guest.setAttribute(
+      'webpreferences',
+      'contextIsolation=yes, nodeIntegration=no, webSecurity=yes, sandbox=no',
+    );
     webview = guest;
     webviewHost.replaceChildren(guest);
     attachWebviewEvents(guest);

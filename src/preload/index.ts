@@ -19,6 +19,10 @@ export interface AppInfo {
   scanWindowMs: number;
   /** Developer debug menu available (dev/unpackaged builds only). */
   debugMenu: boolean;
+  /** Rotating log file (design doc §5) — shown in Settings. */
+  logFilePath: string;
+  /** Previous run ended in a crash; show the recovery notice once. */
+  recoveredFromCrash: boolean;
 }
 
 /** Profile as the renderer sees it — the credential blob never crosses over. */
@@ -80,6 +84,11 @@ export interface PrintPilotBridge {
   /** Assembles the diagnostics text in main and puts it on the clipboard. */
   copyDiagnostics(): Promise<void>;
 
+  /** Forward a warn/error line to the rotating log (rate-limited in main). */
+  writeLog(level: 'warn' | 'error', message: string): Promise<void>;
+  /** Reveal the log file in the OS file manager. */
+  revealLogFile(): Promise<void>;
+
   /** Dev builds only — main throws when the debug menu is disabled. */
   debugOpenDevTools(): Promise<void>;
   debugDumpState(): Promise<void>;
@@ -119,6 +128,9 @@ const bridge: PrintPilotBridge = {
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch) as Promise<SettingsFile>,
 
   copyDiagnostics: () => ipcRenderer.invoke('diagnostics:copy') as Promise<void>,
+
+  writeLog: (level, message) => ipcRenderer.invoke('log:write', { level, message }) as Promise<void>,
+  revealLogFile: () => ipcRenderer.invoke('log:reveal') as Promise<void>,
 
   debugOpenDevTools: () => ipcRenderer.invoke('debug:open-devtools') as Promise<void>,
   debugDumpState: () => ipcRenderer.invoke('debug:dump-state') as Promise<void>,

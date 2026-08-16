@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PrintPilot</title>
@@ -191,12 +191,21 @@
         <section aria-labelledby="settings-diagnostics-heading">
           <h2 class="settings__heading" id="settings-diagnostics-heading">Diagnostics</h2>
           <p class="settings__hint">
-            Copies the app version, OS, adapter list, and a settings summary to the clipboard.
-            Nothing is logged or sent anywhere.
+            Copies the app version, OS, adapter list, a settings summary, and the recent local log
+            to the clipboard. Nothing is sent anywhere.
           </p>
-          <button type="button" class="btn btn--secondary" id="copy-diagnostics-button">
-            Copy diagnostics
-          </button>
+          <div class="settings__row">
+            <span class="settings__label">Log file</span>
+            <span class="mono settings__log-path" id="log-path"></span>
+          </div>
+          <div class="settings__actions">
+            <button type="button" class="btn btn--secondary" id="copy-diagnostics-button">
+              Copy diagnostics
+            </button>
+            <button type="button" class="btn btn--secondary" id="reveal-logs-button">
+              Reveal log file
+            </button>
+          </div>
         </section>
 
         <section aria-labelledby="settings-about-heading">

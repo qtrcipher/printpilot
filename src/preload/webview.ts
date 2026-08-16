@@ -90,3 +90,16 @@ function reportPageKind(): void {
 }
 
 window.addEventListener('DOMContentLoaded', reportPageKind);
+
+// Forward page errors to the shell → main's rotating log (design doc §5).
+// The shell relays these over the typed log:write IPC (rate-limited there).
+function forwardPageError(message: string): void {
+  ipcRenderer.sendToHost('log:guest', { level: 'error', message: message.slice(0, 500) });
+}
+
+window.addEventListener('error', (event) => {
+  forwardPageError(`printer page error: ${event.message || 'unknown'}`);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  forwardPageError(`printer page unhandled rejection: ${String(event.reason)}`);
+});

@@ -29,13 +29,17 @@ export async function launchApp(
   extraEnv: Record<string, string> = {},
   configDir?: string,
 ): Promise<ElectronApplication> {
+  const config = configDir ?? (await makeConfigDir());
   return electron.launch({
     args: ['.'],
     env: {
       ...process.env,
       PRINTPILOT_FAKE_DISCOVERY: '1',
       PRINTPILOT_SCAN_WINDOW_MS: '300',
-      PRINTPILOT_CONFIG_DIR: configDir ?? (await makeConfigDir()),
+      PRINTPILOT_CONFIG_DIR: config,
+      // Keep the rotating log out of the developer's real log dir, next to
+      // the throwaway config dir (same isolation mechanism).
+      PRINTPILOT_LOG_DIR: path.join(config, 'logs'),
       ...extraEnv,
     },
   });

@@ -533,6 +533,12 @@ body {
   max-width: 220px;
 }
 
+.settings__log-path {
+  overflow-wrap: anywhere;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
 .settings__actions {
   display: flex;
   flex-wrap: wrap;

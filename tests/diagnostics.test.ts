@@ -58,4 +58,16 @@ describe('buildDiagnostics', () => {
     const text = buildDiagnostics(input({ settings: { ...settings, version: SETTINGS_VERSION } }));
     expect(text).toContain('remapped [activate]');
   });
+
+  it('appends the log tail when provided', () => {
+    const text = buildDiagnostics(
+      input({ logTail: ['{"level":"info","msg":"printer found"}', '{"level":"warn","msg":"scan error"}'] }),
+    );
+    expect(text).toContain('Recent log (last 2 lines):');
+    expect(text).toContain('printer found');
+  });
+
+  it('omits the log section when the log is empty', () => {
+    expect(buildDiagnostics(input({ logTail: [] }))).not.toContain('Recent log');
+  });
 });

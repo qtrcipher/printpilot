@@ -1,10 +1,11 @@
-import { app, BrowserWindow, clipboard, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, session, shell } from 'electron';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadAdapterManifests } from './adapters-load';
 import { resolveAdapter, type AdapterManifest } from './adapters';
 import { resolveConfigDir } from './config-dir';
+import { consumeCrashFlag, formatCrashEntry, markCrash, type CrashDetails, type CrashKind } from './crash';
 import { createSafeStorageCipher } from './credentials';
 import { buildDiagnostics } from './diagnostics';
 import {
@@ -15,7 +16,9 @@ import {
   type DiscoveredPrinter,
 } from './discovery';
 import { createDiscoveryService } from './discovery-net';
+import { createLogger, type Logger, type LogLevel } from './logger';
 import { loadProfiles, ProfileStore, type NewProfile, type PrinterProfile } from './profiles';
+import { decideNavigation, permissionDecision } from './security';
 import { loadSettings, saveSettings, updateSettings, validateSettingsPatch } from './settings';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +55,19 @@ const discovery = (() => {
 })();
 
 const profileStore = new ProfileStore(configDir, createSafeStorageCipher());
+
+// Rotating local log (design doc §5). app.getPath('logs') is only reliable
+// once the app is ready, so the logger is created in whenReady; `logger()`
+// throws before that and nothing logs earlier.
+let loggerInstance: Logger | null = null;
+function logger(): Logger {
+  if (!loggerInstance) throw new Error('logger used before app ready');
+  return loggerInstance;
+}
+
+// The printer host[:port] the control view connected to — the only host the
+// webview guest may navigate within (docs/security-audit-2026-08-17.md).
+let allowedPrinterHost: string | null = null;
 
 // Adapter manifests are data files shipped in the bundle (design doc §4);
 // app.getAppPath() is the project root in dev/e2e and the asar root when
@@ -93,6 +109,7 @@ async function diagnosticsText(): Promise<string> {
     adapterIds: manifests.map((m) => m.id),
     settings,
     profiles,
+    logTail: logger().recentLines(50),
   });
 }
 
@@ -113,6 +130,7 @@ async function createWindow(): Promise<void> {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: true,
       webviewTag: true, // control view embeds the Remote UI via <webview>
     },
   });
@@ -128,9 +146,12 @@ async function createWindow(): Promise<void> {
     });
   });
 
-  // External links open in the system browser, never in the shell window.
+  // External links open in the system browser, never in the shell window —
+  // and only http(s); other schemes (file:, custom protocols) are refused.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    const decision = decideNavigation(url, null);
+    if (decision.action === 'external') void shell.openExternal(decision.url);
+    else logger().warn('security', 'shell window.open blocked', { url });
     return { action: 'deny' };
   });
 
@@ -141,10 +162,34 @@ async function createWindow(): Promise<void> {
   }
 }
 
+/** ipcMain.handle wrapper: every handler failure lands in the log (redacted). */
+function handle(channel: string, fn: (event: Electron.IpcMainInvokeEvent, ...args: never[]) => unknown): void {
+  ipcMain.handle(channel, async (event, ...args) => {
+    try {
+      return await fn(event, ...(args as never[]));
+    } catch (err) {
+      logger().warn('ipc', `${channel} failed`, { err: err instanceof Error ? err : new Error(String(err)) });
+      throw err;
+    }
+  });
+}
+
+/**
+ * Renderer/webview-guest log forwarding (design doc §5). Only warn/error are
+ * accepted, messages are length-capped, and each sender is rate-limited so a
+ * broken page can't flood the log file.
+ */
+const LOG_WRITE_LEVELS: readonly LogLevel[] = ['warn', 'error'];
+const LOG_WRITE_LIMIT = 10;
+const LOG_WRITE_WINDOW_MS = 10_000;
+const logWriteTimestamps = new Map<number, number[]>();
+
 function registerIpc(): void {
-  ipcMain.handle('app:info', async () => {
+  handle('app:info', async () => {
     const profiles = await loadProfiles(configDir);
     const settings = await loadSettings(configDir);
+    // Consumed here so the recovery notice is shown exactly once.
+    const crash = consumeCrashFlag(loggerDir());
     return {
       version: app.getVersion(),
       platform: process.platform,
@@ -152,26 +197,50 @@ function registerIpc(): void {
       profileCount: profiles.printers.length,
       scanWindowMs: envScanWindowMs ?? settings.discovery.scanWindowMs,
       debugMenu: debugMenuEnabled(),
+      logFilePath: logger().filePath,
+      recoveredFromCrash: crash !== null,
     };
   });
 
   // --- Settings (design doc §4/§7) ------------------------------------------
-  ipcMain.handle('settings:get', () => loadSettings(configDir));
-  ipcMain.handle('settings:update', (_event, patch: unknown) =>
+  handle('settings:get', () => loadSettings(configDir));
+  handle('settings:update', (_event, patch: unknown) =>
     updateSettings(configDir, validateSettingsPatch(patch)),
   );
 
+  // --- Logging (design doc §5) -----------------------------------------------
+  handle('log:write', (event, entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) throw new Error('log entry must be an object');
+    const raw = entry as Record<string, unknown>;
+    const level = raw.level;
+    if (typeof level !== 'string' || !LOG_WRITE_LEVELS.includes(level as LogLevel)) {
+      throw new Error('log level must be warn or error');
+    }
+    const message = assertString(raw.message, 'message', 500);
+    const now = Date.now();
+    const seen = (logWriteTimestamps.get(event.sender.id) ?? []).filter(
+      (ts) => now - ts < LOG_WRITE_WINDOW_MS,
+    );
+    if (seen.length >= LOG_WRITE_LIMIT) return; // silently drop the flood
+    seen.push(now);
+    logWriteTimestamps.set(event.sender.id, seen);
+    logger().log(level as LogLevel, 'renderer', message);
+  });
+  handle('log:reveal', () => {
+    shell.showItemInFolder(logger().filePath);
+  });
+
   // --- Diagnostics (design doc §5: "copy diagnostics" button) ----------------
-  ipcMain.handle('diagnostics:copy', async () => {
+  handle('diagnostics:copy', async () => {
     clipboard.writeText(await diagnosticsText());
   });
 
   // --- Developer debug menu (dev builds only, design doc §7) -----------------
-  ipcMain.handle('debug:open-devtools', (event) => {
+  handle('debug:open-devtools', (event) => {
     if (!debugMenuEnabled()) throw new Error('Debug menu is only available in dev builds');
     BrowserWindow.fromWebContents(event.sender)?.webContents.openDevTools({ mode: 'detach' });
   });
-  ipcMain.handle('debug:dump-state', async () => {
+  handle('debug:dump-state', async () => {
     if (!debugMenuEnabled()) throw new Error('Debug menu is only available in dev builds');
     const [settings, profiles] = await Promise.all([loadSettings(configDir), profileStore.list()]);
     // Redacted: the credential blob is replaced by a boolean before it can
@@ -184,43 +253,53 @@ function registerIpc(): void {
   });
 
   // --- Discovery (design doc §3) -------------------------------------------
-  ipcMain.handle('discovery:start', () => {
+  handle('discovery:start', () => {
+    logger().info('discovery', 'scan started');
     discovery.stop();
     discovery.clear();
     discovery.start();
   });
-  ipcMain.handle('discovery:stop', () => {
+  handle('discovery:stop', () => {
+    logger().info('discovery', 'scan stopped');
     discovery.stop();
   });
-  ipcMain.handle('discovery:check-manual', (_event, ip: unknown) => {
+  handle('discovery:check-manual', (_event, ip: unknown) => {
     const host = assertString(ip, 'ip', 64);
     if (!isValidIpv4(host)) throw new Error('Not a valid IPv4 address');
     return discovery.checkManualHost(host);
   });
 
-  // --- Profiles (design doc §4) --------------------------------------------
-  ipcMain.handle('profiles:list', async () => (await profileStore.list()).map(stripCredential));
-  ipcMain.handle('profiles:add', async (_event, input: unknown) =>
-    stripCredential(await profileStore.add(validateNewProfile(input))),
-  );
-  ipcMain.handle('profiles:remove', (_event, id: unknown) =>
-    profileStore.remove(assertString(id, 'id', 64)),
-  );
-  ipcMain.handle('profiles:rename', async (_event, id: unknown, nickname: unknown) =>
-    stripCredential(
-      await profileStore.rename(assertString(id, 'id', 64), assertString(nickname, 'nickname', 80)),
-    ),
-  );
-  ipcMain.handle('profiles:set-credential', async (_event, id: unknown, secret: unknown) => {
-    const value = assertString(secret, 'credential', 200);
-    await profileStore.setCredential(assertString(id, 'id', 64), value);
+  // --- Profiles (design doc §4). Secrets are never logged — ids/names only. --
+  handle('profiles:list', async () => (await profileStore.list()).map(stripCredential));
+  handle('profiles:add', async (_event, input: unknown) => {
+    const profile = stripCredential(await profileStore.add(validateNewProfile(input)));
+    logger().info('profiles', 'profile added', { id: profile?.id, nickname: profile?.nickname });
+    return profile;
   });
-  ipcMain.handle('profiles:get-credential', (_event, id: unknown) =>
+  handle('profiles:remove', (_event, id: unknown) => {
+    const profileId = assertString(id, 'id', 64);
+    logger().info('profiles', 'profile removed', { id: profileId });
+    return profileStore.remove(profileId);
+  });
+  handle('profiles:rename', async (_event, id: unknown, nickname: unknown) => {
+    const profile = stripCredential(
+      await profileStore.rename(assertString(id, 'id', 64), assertString(nickname, 'nickname', 80)),
+    );
+    logger().info('profiles', 'profile renamed', { id: profile?.id });
+    return profile;
+  });
+  handle('profiles:set-credential', async (_event, id: unknown, secret: unknown) => {
+    const value = assertString(secret, 'credential', 200);
+    const profileId = assertString(id, 'id', 64);
+    await profileStore.setCredential(profileId, value);
+    logger().info('profiles', 'credential saved', { id: profileId });
+  });
+  handle('profiles:get-credential', (_event, id: unknown) =>
     profileStore.getCredential(assertString(id, 'id', 64)),
   );
 
   // --- Control view (design doc §3: embedded Remote UI) ---------------------
-  ipcMain.handle('control:connect', async (_event, input: unknown) => {
+  handle('control:connect', async (_event, input: unknown) => {
     const target = validateConnectTarget(input);
     const manifests = await adapterManifests();
     const { adapter, matched } = resolveAdapter(manifests, {
@@ -232,6 +311,12 @@ function registerIpc(): void {
       // Best-effort bookkeeping; a stale id must not block connecting.
       await profileStore.touchLastConnected(target.profileId).catch(() => undefined);
     }
+    allowedPrinterHost = `${target.host}:${target.port}`;
+    logger().info('control', 'connecting', {
+      host: allowedPrinterHost,
+      adapter: adapter.id,
+      adapterMatched: matched,
+    });
     return {
       url: `http://${target.host}:${target.port}/`,
       preloadUrl: pathToFileURL(path.join(__dirname, '../preload/webview.mjs')).href,
@@ -240,12 +325,13 @@ function registerIpc(): void {
     };
   });
 
-  ipcMain.handle('control:open-external', (_event, url: unknown) => {
+  handle('control:open-external', (_event, url: unknown) => {
     const value = assertString(url, 'url', 300);
     const parsed = new URL(value);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new Error('Only http(s) URLs can be opened externally');
     }
+    logger().info('control', 'opened in system browser', { url: value });
     return shell.openExternal(value);
   });
 }
@@ -326,14 +412,111 @@ function broadcastDiscoveryEvents(): void {
     }
   };
   discovery.onPrinterFound((printer: DiscoveredPrinter) => {
+    logger().info('discovery', 'printer found', {
+      host: printer.host,
+      port: printer.port,
+      hostname: printer.hostname,
+      vendor: printer.vendor,
+      model: printer.model,
+      via: printer.via,
+    });
     send('discovery:printer-found', printer);
   });
   discovery.onError((err) => {
+    logger().warn('discovery', 'scan error', { err });
     send('discovery:error', err.message);
   });
 }
 
+/** Log dir: Electron's per-OS logs dir, overridable for tests (like the config dir). */
+function loggerDir(): string {
+  return process.env.PRINTPILOT_LOG_DIR ?? app.getPath('logs');
+}
+
+/**
+ * Local-only crash capture (docs/decisions/no-telemetry.md): write the crash
+ * to the rotating log and set the next-launch recovery flag. Nothing is sent
+ * anywhere.
+ */
+function recordCrash(kind: CrashKind, details: CrashDetails): void {
+  const entry = formatCrashEntry(kind, details);
+  logger().error('crash', 'process exited abnormally', entry);
+  markCrash(loggerDir(), entry);
+}
+
+function registerCrashCapture(): void {
+  // PRINTPILOT_SIMULATE_CRASH lets the e2e suite exercise the recovery notice
+  // without actually crashing a process.
+  if (process.env.PRINTPILOT_SIMULATE_CRASH === '1') {
+    recordCrash('render-process-gone', { reason: 'simulated (PRINTPILOT_SIMULATE_CRASH=1)' });
+  }
+  app.on('render-process-gone', (_event, _webContents, details) => {
+    recordCrash('render-process-gone', { reason: details.reason, exitCode: details.exitCode });
+  });
+  app.on('child-process-gone', (_event, details) => {
+    recordCrash('child-process-gone', {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      processType: details.type,
+    });
+  });
+  process.on('unhandledRejection', (reason) => {
+    recordCrash('unhandledRejection', { reason: reason instanceof Error ? reason.message : String(reason) });
+  });
+  process.on('uncaughtException', (err) => {
+    recordCrash('uncaughtException', { reason: err.message });
+  });
+}
+
+/**
+ * Security policy for embedded content (docs/security-audit-2026-08-17.md):
+ * the webview guest may only navigate within the printer host; other http(s)
+ * URLs go to the system browser; everything else is denied. All Chromium
+ * permission requests are denied — the app needs none of them.
+ */
+function registerSecurityPolicy(): void {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    const grant = permissionDecision(permission);
+    if (!grant) logger().warn('security', 'permission request denied', { permission });
+    callback(grant);
+  });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => permissionDecision(permission));
+
+  app.on('web-contents-created', (_event, contents) => {
+    if (contents.getType() !== 'webview') return;
+    contents.setWindowOpenHandler(({ url }) => {
+      const decision = decideNavigation(url, allowedPrinterHost);
+      if (decision.action === 'external') {
+        logger().info('security', 'window.open routed to system browser', { url });
+        void shell.openExternal(decision.url);
+      } else {
+        logger().warn('security', 'window.open blocked', { url });
+      }
+      return { action: 'deny' }; // popups never open inside the app
+    });
+    contents.on('will-navigate', (event, url) => {
+      const decision = decideNavigation(url, allowedPrinterHost);
+      if (decision.action === 'allow') return;
+      event.preventDefault();
+      if (decision.action === 'external') {
+        logger().info('security', 'navigation routed to system browser', { url });
+        void shell.openExternal(decision.url);
+      } else {
+        logger().warn('security', 'navigation blocked', { url, reason: decision.reason });
+      }
+    });
+  });
+}
+
 void app.whenReady().then(() => {
+  loggerInstance = createLogger({ dir: loggerDir() });
+  logger().info('app', 'PrintPilot starting', {
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  registerCrashCapture();
+  registerSecurityPolicy();
   registerIpc();
   broadcastDiscoveryEvents();
   void createWindow();

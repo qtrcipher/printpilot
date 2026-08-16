@@ -3,9 +3,10 @@ import { GAMEPAD_ACTIONS, type SettingsFile } from './settings';
 
 /**
  * "Copy diagnostics" payload (design doc §5/§7): app/OS versions, adapter
- * list, and a settings + profile summary. There is no log system yet, so
- * this assembles what exists. Hard rule: secrets never leave the machine —
- * profile credential blobs are replaced by a boolean and PINs never appear.
+ * list, a settings + profile summary, and the tail of the rotating local log.
+ * Hard rule: secrets never leave the machine — profile credential blobs are
+ * replaced by a boolean and PINs never appear (log lines are already redacted
+ * by the logger before they were written).
  */
 
 export interface DiagnosticsInput {
@@ -19,6 +20,8 @@ export interface DiagnosticsInput {
   settings: SettingsFile;
   /** Raw store profiles — this function is responsible for redaction. */
   profiles: PrinterProfile[];
+  /** Last N lines of the rotating log (already redacted at write time). */
+  logTail?: string[];
 }
 
 export function buildDiagnostics(input: DiagnosticsInput): string {
@@ -46,6 +49,10 @@ export function buildDiagnostics(input: DiagnosticsInput): string {
         ` credential=${p.credentialEnc ? 'saved' : 'none'}` +
         (p.lastConnected ? ` lastConnected=${p.lastConnected}` : ''),
     );
+  }
+  if (input.logTail && input.logTail.length > 0) {
+    lines.push('', `Recent log (last ${input.logTail.length} lines):`);
+    lines.push(...input.logTail);
   }
   return `${lines.join('\n')}\n`;
 }

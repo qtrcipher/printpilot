@@ -65,6 +65,8 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
   const remapReset = el<HTMLButtonElement>('#remap-reset');
   const scanWindowInput = el<HTMLInputElement>('#scan-window-input');
   const copyDiagnosticsButton = el<HTMLButtonElement>('#copy-diagnostics-button');
+  const logPathLabel = el('#log-path');
+  const revealLogsButton = el<HTMLButtonElement>('#reveal-logs-button');
   const versionLabel = el('#settings-version');
   const githubButton = el<HTMLButtonElement>('#about-github');
   const showWelcomeButton = el<HTMLButtonElement>('#show-welcome');
@@ -263,6 +265,13 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
       });
   });
 
+  revealLogsButton.addEventListener('click', () => {
+    void deps
+      .getBridge()
+      ?.revealLogFile()
+      .catch((err: unknown) => deps.showToast(err instanceof Error ? err.message : String(err)));
+  });
+
   githubButton.addEventListener('click', () => {
     void deps.getBridge()?.openExternal(GITHUB_URL);
   });
@@ -299,6 +308,7 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
       themeSelect.value = next.theme;
       scanWindowInput.value = String(next.discovery.scanWindowMs);
       versionLabel.textContent = `v${deps.getAppInfo()?.version ?? '?'}`;
+      logPathLabel.textContent = deps.getAppInfo()?.logFilePath ?? '';
       debugSection.hidden = !deps.getAppInfo()?.debugMenu;
       renderRemapList();
       view.hidden = false;

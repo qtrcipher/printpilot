@@ -32,6 +32,14 @@ declare global {
 
 const bridge = window.printpilot;
 
+// Forward shell runtime errors to the main-process rotating log (design §5).
+window.addEventListener('error', (event) => {
+  void bridge?.writeLog('error', `shell error: ${event.message || 'unknown'}`);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  void bridge?.writeLog('error', `shell unhandled rejection: ${String(event.reason).slice(0, 400)}`);
+});
+
 function el<T extends HTMLElement>(selector: string): T {
   const node = document.querySelector<T>(selector);
   if (!node) throw new Error(`Missing element: ${selector}`);
@@ -462,6 +470,11 @@ async function init(): Promise<void> {
   } catch (err) {
     showError(err instanceof Error ? err.message : String(err));
     return;
+  }
+  // Non-scary crash recovery notice (design doc §5; shown exactly once —
+  // main consumes the flag when answering app:info).
+  if (appInfo.recoveredFromCrash) {
+    showToast('PrintPilot recovered from a crash last time. Copy diagnostics in Settings has the details.');
   }
   bridge.onPrinterFound(onPrinterFound);
   bridge.onDiscoveryError(showError);
