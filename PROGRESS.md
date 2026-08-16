@@ -13,14 +13,13 @@
 > (Xcode, ASC, StoreKit, Firebase) were replaced with desktop equivalents.
 
 ## Phase 0 — Plan (GATE: no implementation code until every item below is checked)
-- [ ] Problem, users, MVP scope, success metrics — `product-frameworks` · `brainstorming`
-- [ ] Existing-solutions check: Canon Remote UI, vendor tools, OSS competitors, demand — `app-market-research` (adapted: web research, no App Store)
-- [ ] (Optional, max ONCE) Deep research on an expensive-to-reverse bet — protocol choice,
-      architecture direction → `research/<slug>/SYNTHESIS.md`. Skip if single-engine research settles it
-- [ ] Screens, flows, all four UI states per screen — `ux-design-patterns`
-- [ ] Design direction: style, palette, typography — `ui-ux-pro-max` · `design-tokens`
-- [ ] Architecture + module plan (discovery, protocol layer, UI, input mapping)
-- [ ] Local data model: printer profiles, settings, key/joystick mappings storage
+- [x] Problem, users, MVP scope, success metrics — `product-frameworks` · `brainstorming` → design doc §1
+- [x] Existing-solutions check: Canon Remote UI, vendor tools, OSS competitors, demand — `app-market-research` (adapted: web research, no App Store) → design doc §2
+- [x] ~~(Optional, max ONCE) Deep research~~ — SKIPPED: single-engine research settled the direction (Remote UI wrap + nav layer)
+- [x] Screens, flows, all four UI states per screen — `ux-design-patterns` → design doc §7
+- [x] Design direction: style, palette, typography — `ui-ux-pro-max` · `design-tokens` → design doc §8
+- [x] Architecture + module plan (discovery, protocol layer, UI, input mapping) → design doc §3 (Approach A, Electron)
+- [x] Local data model: printer profiles, settings, key/joystick mappings storage → design doc §4
 
 ## Phase 1 — Foundation
 - [ ] Public GitHub repo; LICENSE chosen (open source); `.gitignore` covers secrets BEFORE first commit
@@ -60,4 +59,5 @@
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
+- 2026-08-16 — scaffolded roadmap; Phase 0 COMPLETE (gate passed): scope=recovery console, Canon-first, Electron; design doc `docs/plans/2026-08-16-printpilot-design.md` — next: Phase 1 repo + stack scaffold
 - 2026-08-16 — scaffolded this roadmap (adapted from ios-ship-gate template) — next: Phase 0 scope
