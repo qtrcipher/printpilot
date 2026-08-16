@@ -9,11 +9,15 @@ import { firstPage, launchApp, makeConfigDir } from './launch';
  * settings can be asserted on disk without touching the real config.
  */
 
-async function readSettings(configDir: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await readFile(path.join(configDir, 'settings.json'), 'utf8')) as Record<
-    string,
-    unknown
-  >;
+async function readSettings(configDir: string): Promise<Record<string, unknown> | null> {
+  try {
+    return JSON.parse(await readFile(path.join(configDir, 'settings.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return null; // not written yet — callers poll
+  }
 }
 
 test('settings opens from the gear, theme toggle flips data-theme and persists', async () => {
@@ -34,7 +38,7 @@ test('settings opens from the gear, theme toggle flips data-theme and persists',
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     // Persisted to settings.json, not just applied.
-    expect((await readSettings(configDir)).theme).toBe('dark');
+    expect((await readSettings(configDir))?.theme).toBe('dark');
 
     // Back to Home; focus returns to the gear.
     await page.locator('#settings-back').click();
@@ -60,20 +64,20 @@ test('remap row enters press-to-assign, Esc cancels cleanly, a key can be assign
     await expect(row.locator('.remap-list__binding')).toContainText('Press a gamepad button');
     await page.keyboard.press('Escape');
     await expect(row.locator('.remap-list__binding')).toHaveText('Button 0');
-    expect((await readSettings(configDir)).gamepad ?? {}).toEqual({});
+    expect((await readSettings(configDir))?.gamepad ?? {}).toEqual({});
 
     // Assign a keyboard key — stored in settings.json.
     await row.locator('.remap-list__assign').click();
     await page.keyboard.press('x');
     await expect(row.locator('.remap-list__binding')).toHaveText('Key “x”');
-    expect((await readSettings(configDir)).gamepad).toEqual({
+    expect((await readSettings(configDir))?.gamepad).toEqual({
       activate: { kind: 'key', key: 'x' },
     });
 
     // Reset to defaults clears the custom binding.
     await page.locator('#remap-reset').click();
     await expect(row.locator('.remap-list__binding')).toHaveText('Button 0');
-    expect((await readSettings(configDir)).gamepad).toEqual({});
+    expect((await readSettings(configDir))?.gamepad).toEqual({});
   } finally {
     await app.close();
   }
@@ -95,7 +99,14 @@ test('onboarding shows on a fresh config dir, never again after dismiss', async 
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
     await expect(page.locator('#empty-state')).toBeVisible();
-    expect((await readSettings(configDir)).onboardingSeen).toBe(true);
+    // The dismiss persists asynchronously (renderer → IPC → fs): poll the
+    // config dir until the flag is on disk. This also gates app.close() on
+    // the write, so the relaunch below is deterministic.
+    await expect
+      .poll(() => readSettings(configDir).then((s) => s?.onboardingSeen), {
+        message: 'onboardingSeen persisted to settings.json',
+      })
+      .toBe(true);
   } finally {
     await app.close();
   }

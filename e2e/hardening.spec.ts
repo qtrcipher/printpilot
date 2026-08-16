@@ -62,15 +62,24 @@ test('security: webview guest cannot navigate away from the printer host', async
     // A non-http(s) navigation is denied outright (no file:/data: in the app).
     // Page-initiated via the guest itself — will-navigate does not fire for
     // programmatic loadURL (only the shell can call that, and it never does
-    // with untrusted URLs).
+    // with untrusted URLs). Awaiting executeJavaScript is the sync point:
+    // the navigation decision (deny) happens synchronously during the
+    // assignment, and a second round-trip proves the guest was not unloaded.
     await page.evaluate(() => {
       const guest = document.querySelector('webview') as unknown as {
         executeJavaScript(code: string): Promise<unknown>;
       };
-      void guest.executeJavaScript('window.location.href = "file:///etc/passwd"');
+      return guest
+        .executeJavaScript('window.location.href = "file:///etc/passwd"')
+        .catch(() => undefined);
     });
-    // The guest is still on the fixture page — the navigation never happened.
-    await page.waitForTimeout(500); // give a (denied) navigation time to misfire
+    const title = await page.evaluate(() => {
+      const guest = document.querySelector('webview') as unknown as {
+        executeJavaScript(code: string): Promise<unknown>;
+      };
+      return guest.executeJavaScript('document.title');
+    });
+    expect(title).toBe('Remote UI: Top Page');
     const url = await page.evaluate(() =>
       (document.querySelector('webview') as unknown as { getURL(): string }).getURL(),
     );

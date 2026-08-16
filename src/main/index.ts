@@ -138,12 +138,21 @@ async function createWindow(): Promise<void> {
   if (maximized) win.maximize();
 
   // Persist window state on close (design doc §4: settings.json window state).
+  // Persist window state on close (design doc §4: settings.json window state).
+  // Re-read the file first: the copy loaded at startup is stale by now, and
+  // rewriting it wholesale would clobber session changes (theme, remap,
+  // onboardingSeen) — which is exactly what made the onboarding e2e flaky.
   win.on('close', () => {
     const bounds = win.getBounds();
-    void saveSettings(configDir, {
-      ...settings,
-      window: { width: bounds.width, height: bounds.height, maximized: win.isMaximized() },
-    });
+    const maximizedNow = win.isMaximized();
+    void loadSettings(configDir)
+      .then((current) =>
+        saveSettings(configDir, {
+          ...current,
+          window: { width: bounds.width, height: bounds.height, maximized: maximizedNow },
+        }),
+      )
+      .catch(() => undefined); // window-state persistence is best-effort
   });
 
   // External links open in the system browser, never in the shell window —

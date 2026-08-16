@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Fixture recorder (house rule: tests never need a physical printer).
  *
