@@ -22,11 +22,11 @@
 - [x] Local data model: printer profiles, settings, key/joystick mappings storage → design doc §4
 
 ## Phase 1 — Foundation
-- [ ] Public GitHub repo; LICENSE chosen (open source); `.gitignore` covers secrets BEFORE first commit
-- [ ] Tech stack scaffold (TBD in Phase 0: Tauri / Electron / Python+Qt / .NET) + CI for Windows & Linux builds — `release-automation`
-- [ ] App icon + branding — `icon-design-guide`
-- [ ] Docker build environment for reproducible builds
-- [ ] Scaffold this file into the repo as `PROGRESS.md` — `ios-ship-gate` (template in its references/)
+- [x] Public GitHub repo (github.com/qtrcipher/printpilot); GPLv3 LICENSE; `.gitignore` covers secrets BEFORE first commit
+- [x] Tech stack scaffold: Electron + TypeScript (electron-vite) + CI matrix Windows & Linux — `release-automation`
+- [x] App icon + branding (printer + D-pad glyph, palette accents) — `icon-design-guide`
+- [ ] Docker build environment for reproducible builds (Dockerfile written; build verification in progress)
+- [x] Scaffold this file into the repo as `PROGRESS.md` — `ios-ship-gate` (template in its references/)
 
 ## Phase 2 — Features
 - [ ] Core features: <list them in Phase 0 — candidates: printer discovery (mDNS/SNMP),
@@ -59,5 +59,6 @@
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
+- 2026-08-16 — Phase 1 nearly done: Electron+TS scaffold (23 unit + e2e green), GPLv3, public repo github.com/qtrcipher/printpilot live, icon, CI matrix — next: verify Docker build, then Phase 2 core features
 - 2026-08-16 — scaffolded roadmap; Phase 0 COMPLETE (gate passed): scope=recovery console, Canon-first, Electron; design doc `docs/plans/2026-08-16-printpilot-design.md` — next: Phase 1 repo + stack scaffold
 - 2026-08-16 — scaffolded this roadmap (adapted from ios-ship-gate template) — next: Phase 0 scope
