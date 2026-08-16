@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Open source desktop recovery console for operating a network printer's menu when its control panel is unusable.",
   "license": "GPL-3.0-only",
-  "author": "PrintPilot contributors",
+  "author": "Hamam Alabdulla <hamam@gccapps.com>",
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
