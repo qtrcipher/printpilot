@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AdapterManifest } from '../main/adapters';
 import type { DiscoveredPrinter, ManualCheckResult } from '../main/discovery';
 import type { PrinterProfile } from '../main/profiles';
+import type { SettingsFile, SettingsPatch } from '../main/settings-schema';
 
 /**
  * Typed bridge between main and the shell renderer.
@@ -16,6 +17,8 @@ export interface AppInfo {
   profileCount: number;
   /** How long the Home scan window stays in the loading state. */
   scanWindowMs: number;
+  /** Developer debug menu available (dev/unpackaged builds only). */
+  debugMenu: boolean;
 }
 
 /** Profile as the renderer sees it — the credential blob never crosses over. */
@@ -70,6 +73,16 @@ export interface PrintPilotBridge {
 
   connectPrinter(target: ConnectTargetInput): Promise<ConnectResult>;
   openExternal(url: string): Promise<void>;
+
+  getSettings(): Promise<SettingsFile>;
+  updateSettings(patch: SettingsPatch): Promise<SettingsFile>;
+
+  /** Assembles the diagnostics text in main and puts it on the clipboard. */
+  copyDiagnostics(): Promise<void>;
+
+  /** Dev builds only — main throws when the debug menu is disabled. */
+  debugOpenDevTools(): Promise<void>;
+  debugDumpState(): Promise<void>;
 }
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -101,6 +114,14 @@ const bridge: PrintPilotBridge = {
 
   connectPrinter: (target) => ipcRenderer.invoke('control:connect', target) as Promise<ConnectResult>,
   openExternal: (url) => ipcRenderer.invoke('control:open-external', url) as Promise<void>,
+
+  getSettings: () => ipcRenderer.invoke('settings:get') as Promise<SettingsFile>,
+  updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch) as Promise<SettingsFile>,
+
+  copyDiagnostics: () => ipcRenderer.invoke('diagnostics:copy') as Promise<void>,
+
+  debugOpenDevTools: () => ipcRenderer.invoke('debug:open-devtools') as Promise<void>,
+  debugDumpState: () => ipcRenderer.invoke('debug:dump-state') as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('printpilot', bridge);

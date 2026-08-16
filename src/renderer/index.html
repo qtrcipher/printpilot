@@ -12,8 +12,13 @@
   <body>
     <main class="home" id="app">
       <header class="home__header">
-        <h1 class="home__title">PrintPilot</h1>
-        <p class="home__subtitle">Printer menu recovery console — LAN-only, no telemetry.</p>
+        <div>
+          <h1 class="home__title">PrintPilot</h1>
+          <p class="home__subtitle">Printer menu recovery console — LAN-only, no telemetry.</p>
+        </div>
+        <button type="button" class="btn btn--secondary home__settings" id="settings-button" aria-label="Open settings">
+          ⚙
+        </button>
       </header>
 
       <section class="home__body">
@@ -83,9 +88,19 @@
     <section class="control" id="control-view" hidden>
       <header class="control__strip">
         <button type="button" class="btn btn--secondary" id="control-back">&larr; Home</button>
-        <span class="status-dot status-dot--offline" id="control-dot" title="Connecting"></span>
-        <span class="control__name" id="control-name"></span>
-        <span class="control__host mono" id="control-host"></span>
+        <!-- Status strip: polite live region so name/host/connection changes
+             are announced (design doc §7 accessibility rules). -->
+        <span class="control__status" aria-live="polite">
+          <span
+            class="status-dot status-dot--offline"
+            id="control-dot"
+            role="img"
+            aria-label="Not connected"
+            title="Connecting"
+          ></span>
+          <span class="control__name" id="control-name"></span>
+          <span class="control__host mono" id="control-host"></span>
+        </span>
         <span class="control__page" id="control-page"></span>
       </header>
 
@@ -120,10 +135,124 @@
         <button type="button" class="btn btn--secondary" id="credential-dismiss">Not now</button>
       </div>
 
-      <footer class="hint-bar" id="hint-bar" aria-label="Input hints"></footer>
-      <!-- aria-live mirror of the in-page focus ring (screen readers + e2e). -->
+      <footer class="hint-bar" id="hint-bar" aria-label="Input hints" aria-live="polite"></footer>
+      <!-- Screen-reader announcement channel for in-page focus: the guest nav
+           layer mirrors every focus-ring change into this polite live region
+           (also used by the e2e suite as #nav-focus-probe). -->
       <span class="visually-hidden" id="nav-focus-probe" aria-live="polite"></span>
     </section>
+
+    <section class="settings" id="settings-view" hidden aria-labelledby="settings-title">
+      <header class="settings__header">
+        <button type="button" class="btn btn--secondary" id="settings-back">&larr; Home</button>
+        <h1 class="settings__title" id="settings-title">Settings</h1>
+      </header>
+
+      <div class="settings__body">
+        <section aria-labelledby="settings-appearance-heading">
+          <h2 class="settings__heading" id="settings-appearance-heading">Appearance</h2>
+          <div class="settings__row">
+            <label class="settings__label" for="theme-select">Theme</label>
+            <select class="input settings__control" id="theme-select">
+              <option value="system">System default</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </div>
+        </section>
+
+        <section aria-labelledby="settings-gamepad-heading">
+          <h2 class="settings__heading" id="settings-gamepad-heading">Gamepad mapping</h2>
+          <p class="settings__hint">
+            Choose an action, then press a gamepad button, move a stick, or press a key.
+            Press Esc to cancel.
+          </p>
+          <ul class="remap-list" id="remap-list"></ul>
+          <button type="button" class="btn btn--secondary" id="remap-reset">
+            Reset to defaults
+          </button>
+        </section>
+
+        <section aria-labelledby="settings-discovery-heading">
+          <h2 class="settings__heading" id="settings-discovery-heading">Discovery</h2>
+          <div class="settings__row">
+            <label class="settings__label" for="scan-window-input">Scan window (milliseconds)</label>
+            <input
+              class="input mono settings__control"
+              id="scan-window-input"
+              type="number"
+              min="500"
+              max="60000"
+              step="100"
+            />
+          </div>
+        </section>
+
+        <section aria-labelledby="settings-diagnostics-heading">
+          <h2 class="settings__heading" id="settings-diagnostics-heading">Diagnostics</h2>
+          <p class="settings__hint">
+            Copies the app version, OS, adapter list, and a settings summary to the clipboard.
+            Nothing is logged or sent anywhere.
+          </p>
+          <button type="button" class="btn btn--secondary" id="copy-diagnostics-button">
+            Copy diagnostics
+          </button>
+        </section>
+
+        <section aria-labelledby="settings-about-heading">
+          <h2 class="settings__heading" id="settings-about-heading">About</h2>
+          <p class="settings__hint">
+            PrintPilot <span class="mono" id="settings-version"></span> — open source under the
+            GPLv3 license.
+          </p>
+          <div class="settings__actions">
+            <button type="button" class="btn btn--secondary" id="about-github">
+              GitHub repository
+            </button>
+            <button type="button" class="btn btn--secondary" id="show-welcome">
+              Show welcome again
+            </button>
+          </div>
+        </section>
+
+        <!-- Dev/unpackaged builds only; main refuses these IPC calls otherwise. -->
+        <section id="debug-section" aria-labelledby="debug-heading" hidden>
+          <h2 class="settings__heading" id="debug-heading">Developer</h2>
+          <div class="settings__actions">
+            <button type="button" class="btn btn--secondary" id="debug-devtools-shell">
+              Open shell DevTools
+            </button>
+            <button type="button" class="btn btn--secondary" id="debug-devtools-guest">
+              Open guest DevTools
+            </button>
+            <button type="button" class="btn btn--secondary" id="debug-fake-connect">
+              Connect to fake printer
+            </button>
+            <button type="button" class="btn btn--secondary" id="debug-dump-state">
+              Dump state (redacted) to clipboard
+            </button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- First-run welcome (design doc §7): skippable via button and Esc,
+         traps focus while open, never shown again after dismiss. -->
+    <div class="onboarding" id="onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" hidden>
+      <div class="onboarding__card">
+        <h1 class="onboarding__title" id="onboarding-title">Welcome to PrintPilot</h1>
+        <p>
+          PrintPilot lets you operate your network printer's menu from this computer — made for
+          printers whose control panel is broken or out of reach. It finds the printer on your
+          network and gives you full keyboard and gamepad control of its menu.
+        </p>
+        <p>Everything stays on your local network: LAN-only, no telemetry, no account.</p>
+        <div class="onboarding__actions">
+          <button type="button" class="btn btn--primary" id="onboarding-start">Get started</button>
+          <button type="button" class="btn btn--secondary" id="onboarding-skip">Skip</button>
+        </div>
+      </div>
+    </div>
 
     <p class="toast" id="toast" role="status" hidden></p>
     <script type="module" src="./main.ts"></script>

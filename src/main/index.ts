@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, shell } from 'electron';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -6,6 +6,7 @@ import { loadAdapterManifests } from './adapters-load';
 import { resolveAdapter, type AdapterManifest } from './adapters';
 import { resolveConfigDir } from './config-dir';
 import { createSafeStorageCipher } from './credentials';
+import { buildDiagnostics } from './diagnostics';
 import {
   createOfflineDiscoveryService,
   DiscoveryService,
@@ -15,16 +16,20 @@ import {
 } from './discovery';
 import { createDiscoveryService } from './discovery-net';
 import { loadProfiles, ProfileStore, type NewProfile, type PrinterProfile } from './profiles';
-import { loadSettings, saveSettings } from './settings';
+import { loadSettings, saveSettings, updateSettings, validateSettingsPatch } from './settings';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const configDir = resolveConfigDir({
-  platform: process.platform,
-  homeDir: os.homedir(),
-  appData: process.env.APPDATA,
-  xdgConfigHome: process.env.XDG_CONFIG_HOME,
-});
+// PRINTPILOT_CONFIG_DIR isolates e2e runs from the developer's real config
+// (onboarding flag, profiles) — same mechanism as the fake-discovery hook.
+const configDir =
+  process.env.PRINTPILOT_CONFIG_DIR ??
+  resolveConfigDir({
+    platform: process.platform,
+    homeDir: os.homedir(),
+    appData: process.env.APPDATA,
+    xdgConfigHome: process.env.XDG_CONFIG_HOME,
+  });
 
 // Deterministic no-network discovery for the Playwright e2e suite (CI has no
 // printers; relying on real mDNS/timeouts there would be flaky). When
@@ -58,7 +63,38 @@ async function adapterManifests(): Promise<AdapterManifest[]> {
   return cachedManifests;
 }
 
-const scanWindowMs = Number.parseInt(process.env.PRINTPILOT_SCAN_WINDOW_MS ?? '', 10) || 5000;
+// Env override keeps e2e scans deterministic; otherwise the setting wins.
+const envScanWindowMs = Number.parseInt(process.env.PRINTPILOT_SCAN_WINDOW_MS ?? '', 10) || undefined;
+
+/**
+ * Developer debug menu (design doc §7): dev/unpackaged builds only.
+ * PRINTPILOT_DEBUG_MENU=1 force-enables it; PRINTPILOT_SIMULATE_PACKAGED=1
+ * simulates a packaged build so e2e can assert the menu is absent.
+ */
+function debugMenuEnabled(): boolean {
+  if (process.env.PRINTPILOT_DEBUG_MENU === '1') return true;
+  if (process.env.PRINTPILOT_SIMULATE_PACKAGED === '1') return false;
+  return !app.isPackaged;
+}
+
+async function diagnosticsText(): Promise<string> {
+  const [settings, profiles, manifests] = await Promise.all([
+    loadSettings(configDir),
+    profileStore.list(),
+    adapterManifests(),
+  ]);
+  return buildDiagnostics({
+    appVersion: app.getVersion(),
+    electronVersion: process.versions.electron ?? '',
+    chromeVersion: process.versions.chrome ?? '',
+    platform: process.platform,
+    osRelease: os.release(),
+    arch: process.arch,
+    adapterIds: manifests.map((m) => m.id),
+    settings,
+    profiles,
+  });
+}
 
 async function createWindow(): Promise<void> {
   const settings = await loadSettings(configDir);
@@ -108,13 +144,43 @@ async function createWindow(): Promise<void> {
 function registerIpc(): void {
   ipcMain.handle('app:info', async () => {
     const profiles = await loadProfiles(configDir);
+    const settings = await loadSettings(configDir);
     return {
       version: app.getVersion(),
       platform: process.platform,
       configDir,
       profileCount: profiles.printers.length,
-      scanWindowMs,
+      scanWindowMs: envScanWindowMs ?? settings.discovery.scanWindowMs,
+      debugMenu: debugMenuEnabled(),
     };
+  });
+
+  // --- Settings (design doc §4/§7) ------------------------------------------
+  ipcMain.handle('settings:get', () => loadSettings(configDir));
+  ipcMain.handle('settings:update', (_event, patch: unknown) =>
+    updateSettings(configDir, validateSettingsPatch(patch)),
+  );
+
+  // --- Diagnostics (design doc §5: "copy diagnostics" button) ----------------
+  ipcMain.handle('diagnostics:copy', async () => {
+    clipboard.writeText(await diagnosticsText());
+  });
+
+  // --- Developer debug menu (dev builds only, design doc §7) -----------------
+  ipcMain.handle('debug:open-devtools', (event) => {
+    if (!debugMenuEnabled()) throw new Error('Debug menu is only available in dev builds');
+    BrowserWindow.fromWebContents(event.sender)?.webContents.openDevTools({ mode: 'detach' });
+  });
+  ipcMain.handle('debug:dump-state', async () => {
+    if (!debugMenuEnabled()) throw new Error('Debug menu is only available in dev builds');
+    const [settings, profiles] = await Promise.all([loadSettings(configDir), profileStore.list()]);
+    // Redacted: the credential blob is replaced by a boolean before it can
+    // reach the clipboard.
+    const redacted = profiles.map((p) => ({
+      ...stripCredential(p),
+      credential: p.credentialEnc ? 'saved' : 'none',
+    }));
+    clipboard.writeText(`${JSON.stringify({ settings, profiles: redacted }, null, 2)}\n`);
   });
 
   // --- Discovery (design doc §3) -------------------------------------------

@@ -6,8 +6,10 @@ import {
   LoginWatcher,
   NavEventBus,
   type InputSource,
+  type NavEvent,
 } from './nav-layer';
 import type { AdapterManifest } from '../main/adapters';
+import { DEFAULT_GAMEPAD_MAPPING, type GamepadMapping } from '../main/settings-schema';
 
 /**
  * Guest preload injected into the embedded printer Remote UI page (design
@@ -23,6 +25,10 @@ export interface NavConfig {
   adapter: AdapterManifest;
   /** Saved profile the credential offer should attach to, if any. */
   profileId?: string;
+  /** Resolved gamepad mapping from settings.json (defaults fill gaps). */
+  gamepad?: GamepadMapping;
+  /** Key overrides from key-kind remap bindings (key → nav event). */
+  keyMap?: Record<string, NavEvent>;
 }
 
 let bus: InputSource | null = null;
@@ -47,7 +53,10 @@ function startNavLayer(config: NavConfig): void {
   });
   ring.start();
 
-  bus = new NavEventBus([new KeyboardInputSource(window), new GamepadInputSource(window)]);
+  bus = new NavEventBus([
+    new KeyboardInputSource(window, config.keyMap ?? {}),
+    new GamepadInputSource(window, { mapping: config.gamepad ?? DEFAULT_GAMEPAD_MAPPING }),
+  ]);
   bus.onEvent((event) => {
     if (event.type === 'leave') {
       // No keyboard traps (design doc §7): Ctrl+` hands focus to the shell.

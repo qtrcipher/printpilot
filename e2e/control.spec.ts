@@ -1,5 +1,6 @@
-import { expect, test, _electron as electron, type ElectronApplication } from 'playwright/test';
+import { expect, test, type ElectronApplication } from 'playwright/test';
 import { startFixtureServer, type FixtureServer } from '../tests/fixtures/server';
+import { firstPage, launchApp } from './launch';
 
 /**
  * Control-view e2e (house rule: no physical printer). The mock Canon Remote
@@ -21,22 +22,16 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-async function launchApp(port: number): Promise<ElectronApplication> {
-  return electron.launch({
-    args: ['.'],
-    env: {
-      ...process.env,
-      PRINTPILOT_FAKE_DISCOVERY: '1',
-      PRINTPILOT_SCAN_WINDOW_MS: '300',
-      PRINTPILOT_FAKE_PRINTER_HOST: '127.0.0.1',
-      PRINTPILOT_FAKE_PRINTER_PORT: String(port),
-    },
+function launchAgainst(port: number): Promise<ElectronApplication> {
+  return launchApp({
+    PRINTPILOT_FAKE_PRINTER_HOST: '127.0.0.1',
+    PRINTPILOT_FAKE_PRINTER_PORT: String(port),
   });
 }
 
 test('control view: status strip, hint bar, focus ring, activate, back', async () => {
-  const app = await launchApp(FIXTURE_PORT);
-  const page = await app.firstWindow();
+  const app = await launchAgainst(FIXTURE_PORT);
+  const page = await firstPage(app);
 
   try {
     // Discovered fake printer appears under "Found on this network".
@@ -91,8 +86,8 @@ test('control view: status strip, hint bar, focus ring, activate, back', async (
 });
 
 test('control view: error state for an unreachable printer, with Retry', async () => {
-  const app = await launchApp(DEAD_PORT);
-  const page = await app.firstWindow();
+  const app = await launchAgainst(DEAD_PORT);
+  const page = await firstPage(app);
 
   try {
     const row = page.locator('#discovered-list .printer-row');

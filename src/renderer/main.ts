@@ -2,8 +2,17 @@ import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/700.css';
 import { isValidIpv4, type DiscoveredPrinter } from '../main/discovery';
-import type { ConnectTargetInput, PrintPilotBridge, PublicProfile } from '../preload/index';
-import { createControlView } from './control';
+import {
+  GAMEPAD_ACTIONS,
+  resolveGamepadMapping,
+  type SettingsFile,
+  type ThemeSetting,
+} from '../main/settings-schema';
+import type { AppInfo, ConnectTargetInput, PrintPilotBridge, PublicProfile } from '../preload/index';
+import type { NavEvent } from '../preload/nav-layer';
+import { createControlView, type NavInputConfig } from './control';
+import { createOnboarding } from './onboarding';
+import { createSettingsView } from './settings';
 import './styles.css';
 
 /**
@@ -30,6 +39,7 @@ function el<T extends HTMLElement>(selector: string): T {
 }
 
 const homeView = el('#app');
+const settingsButton = el<HTMLButtonElement>('#settings-button');
 const scanButton = el<HTMLButtonElement>('#scan-button');
 const addIpButton = el<HTMLButtonElement>('#add-ip-button');
 const retryButton = el<HTMLButtonElement>('#retry-button');
@@ -56,8 +66,40 @@ let scanWindowMs = 5000;
 let scanTimer: number | undefined;
 let toastTimer: number | undefined;
 let savedProfiles: PublicProfile[] = [];
+let appInfo: AppInfo | null = null;
+let settings: SettingsFile | null = null;
 const discovered = new Map<string, DiscoveredPrinter>();
 let lastManualHit: { host: string; vendor: string; model: string } | null = null;
+
+/* --- Theme (design doc §8): dark default, light palette as a second set of
+   CSS variables toggled by data-theme; "system" follows the OS. ---------- */
+const darkSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+function applyTheme(theme: ThemeSetting): void {
+  const resolved = theme === 'system' ? (darkSchemeQuery.matches ? 'dark' : 'light') : theme;
+  document.documentElement.dataset.theme = resolved;
+}
+
+darkSchemeQuery.addEventListener('change', () => {
+  if (!settings || settings.theme === 'system') applyTheme('system');
+});
+
+/** Input config handed to the control view → webview guest on connect. */
+function buildNavConfig(): NavInputConfig {
+  const gamepad = resolveGamepadMapping(settings?.gamepad);
+  const keyMap: Record<string, NavEvent> = {};
+  for (const action of GAMEPAD_ACTIONS) {
+    const binding = gamepad[action];
+    if (binding.kind !== 'key') continue;
+    keyMap[binding.key] =
+      action === 'activate'
+        ? { type: 'activate' }
+        : action === 'back'
+          ? { type: 'back' }
+          : { type: 'move', direction: action };
+  }
+  return { gamepad, keyMap };
+}
 
 function show(state: HomeState): void {
   skeleton.hidden = state !== 'loading';
@@ -80,6 +122,7 @@ function showToast(message: string): void {
 const controlView = createControlView({
   getBridge: () => bridge,
   showToast,
+  getNavConfig: buildNavConfig,
   onExit: () => {
     homeView.hidden = false;
     scanButton.focus();
@@ -89,6 +132,81 @@ const controlView = createControlView({
 function openControl(target: ConnectTargetInput): void {
   homeView.hidden = true;
   void controlView.connect(target);
+}
+
+/* --- Settings view + onboarding (design doc §7) --------------------------- */
+
+const settingsView = createSettingsView({
+  getBridge: () => bridge,
+  getAppInfo: () => appInfo,
+  showToast,
+  onSettingsChanged: (updated) => {
+    settings = updated;
+    applyTheme(updated.theme);
+    scanWindowMs = updated.discovery.scanWindowMs;
+  },
+  onShowWelcome: () => {
+    reshowingWelcome = true;
+    onboarding.show();
+  },
+  openGuestDevTools: () => controlView.openGuestDevTools(),
+  connectFakePrinter: () => {
+    homeView.hidden = false; // settings hid itself; Home owns the flow
+    void connectFakePrinter();
+  },
+  onExit: () => {
+    homeView.hidden = false;
+    settingsButton.focus();
+  },
+});
+
+settingsButton.addEventListener('click', () => {
+  if (!settings || controlView.active) return;
+  homeView.hidden = true;
+  settingsView.open(settings);
+});
+
+let reshowingWelcome = false;
+const onboarding = createOnboarding({
+  onDismiss: () => {
+    // Dismiss or completion both mean: never show again (design doc §7).
+    void bridge
+      ?.updateSettings({ onboardingSeen: true })
+      .then((updated) => {
+        settings = updated;
+      })
+      .catch(() => undefined);
+    if (reshowingWelcome) {
+      reshowingWelcome = false;
+      homeView.hidden = false;
+      settingsButton.focus();
+    } else {
+      void startScan(); // straight into the normal Home scan
+    }
+  },
+});
+
+/** Debug menu shortcut: connect to the fake/fixture printer (fake discovery). */
+async function connectFakePrinter(): Promise<void> {
+  if (!bridge) return;
+  showToast('Looking for the fake printer…');
+  const off = bridge.onPrinterFound((printer) => {
+    off();
+    window.clearTimeout(giveUp);
+    openControl({
+      nickname: printer.hostname ?? 'Fake printer',
+      host: printer.host,
+      port: printer.port,
+      vendor: printer.vendor ?? '',
+      model: printer.model ?? '',
+      adapter: printer.vendor === 'canon' ? 'canon-mf750' : '',
+    });
+  });
+  const giveUp = window.setTimeout(() => {
+    off();
+    showToast('No fake printer found — start the app with PRINTPILOT_FAKE_DISCOVERY=1.');
+  }, 5000);
+  await bridge.startDiscovery();
 }
 
 function showError(message: string): void {
@@ -335,9 +453,11 @@ async function init(): Promise<void> {
     return;
   }
   try {
-    const info = await bridge.getAppInfo();
-    versionLabel.textContent = `v${info.version}`;
-    scanWindowMs = info.scanWindowMs;
+    appInfo = await bridge.getAppInfo();
+    versionLabel.textContent = `v${appInfo.version}`;
+    scanWindowMs = appInfo.scanWindowMs;
+    settings = await bridge.getSettings();
+    applyTheme(settings.theme);
     savedProfiles = await bridge.listProfiles();
   } catch (err) {
     showError(err instanceof Error ? err.message : String(err));
@@ -345,6 +465,10 @@ async function init(): Promise<void> {
   }
   bridge.onPrinterFound(onPrinterFound);
   bridge.onDiscoveryError(showError);
+  if (!settings.onboardingSeen) {
+    onboarding.show(); // first run: welcome, then the normal scan on dismiss
+    return;
+  }
   await startScan(); // scan on launch (design doc §7)
 }
 

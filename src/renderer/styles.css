@@ -1,4 +1,4 @@
-/* Design tokens — design doc §8 dark palette. */
+/* Design tokens — design doc §8 dark palette (default). */
 :root {
   --bg: #0f172a;
   --surface: #1b2336;
@@ -7,6 +7,7 @@
   --text: #f8fafc;
   --muted-text: #94a3b8;
   --primary: #1e293b;
+  --primary-text: #f8fafc;
   --success: #22c55e;
   --error: #ef4444;
   --warning: #f59e0b;
@@ -14,6 +15,22 @@
 
   --font-body: 'Inter', system-ui, 'Segoe UI', Roboto, 'Noto Sans', 'Ubuntu', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
+}
+
+/* Light palette (design doc §8), toggled by the theme setting. */
+:root[data-theme='light'] {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --muted: #e8ecf1;
+  --border: #e2e8f0;
+  --text: #020617;
+  --muted-text: #64748b;
+  --primary: #0f172a;
+  --primary-text: #f8fafc;
+  --success: #16a34a;
+  --error: #dc2626;
+  --warning: #b45309;
+  --focus-ring: #0369a1;
 }
 
 * {
@@ -52,6 +69,23 @@ body {
   min-height: 100vh;
   padding: 32px;
   gap: 24px;
+}
+
+.home__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.home__header > div {
+  flex: 1;
+}
+
+.home__settings {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1;
+  padding: 8px 14px;
 }
 
 .home__title {
@@ -278,7 +312,7 @@ body {
 
 .btn--primary {
   background: var(--primary);
-  color: var(--text);
+  color: var(--primary-text);
 }
 
 .btn--primary:hover:not(:disabled) {
@@ -310,6 +344,13 @@ body {
   padding: 10px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+}
+
+.control__status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .control__name {
@@ -432,4 +473,151 @@ body {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* --- Settings view (design doc §7) --------------------------------------- */
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 32px;
+  gap: 24px;
+}
+
+.settings__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.settings__body {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 640px;
+}
+
+.settings__heading {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.settings__hint {
+  margin: 0 0 12px;
+  color: var(--muted-text);
+  font-size: 14px;
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings__label {
+  font-weight: 500;
+}
+
+.settings__control {
+  max-width: 220px;
+}
+
+.settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+select.input {
+  flex: none;
+  appearance: auto;
+}
+
+.remap-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.remap-list__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 16px;
+}
+
+.remap-list__label {
+  font-weight: 500;
+}
+
+.remap-list__binding {
+  flex: 1;
+  color: var(--muted-text);
+  font-size: 13px;
+  text-align: right;
+}
+
+/* --- Onboarding (design doc §7 first-run welcome) ------------------------- */
+
+.onboarding {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(2 6 23 / 70%);
+  z-index: 10;
+}
+
+.onboarding__card {
+  max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+}
+
+.onboarding__title {
+  margin: 0 0 12px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.onboarding__card p {
+  margin: 0 0 12px;
+  color: var(--muted-text);
+}
+
+.onboarding__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* Reduced motion (design doc §7): no shimmer, no transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-row {
+    animation: none;
+  }
+
+  * {
+    transition: none !important;
+  }
 }

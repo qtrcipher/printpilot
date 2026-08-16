@@ -11,7 +11,7 @@ import {
   type Migration,
 } from '../src/main/config-dir';
 import { loadProfiles, profilesPath, saveProfiles } from '../src/main/profiles';
-import { defaultSettings, loadSettings, saveSettings, settingsPath } from '../src/main/settings';
+import { defaultSettings, loadSettings, saveSettings, settingsPath, SETTINGS_VERSION } from '../src/main/settings';
 
 describe('resolveConfigDir', () => {
   it('uses %APPDATA% on Windows', () => {
@@ -83,17 +83,17 @@ describe('versioned JSON load/save', () => {
 
   it('returns defaults stamped with the current version when the file is missing', async () => {
     const settings = await loadSettings(dir);
-    expect(settings.version).toBe(1);
-    expect(settings).toEqual({ ...defaultSettings(), version: 1 });
+    expect(settings.version).toBe(SETTINGS_VERSION);
+    expect(settings).toEqual({ ...defaultSettings(), version: SETTINGS_VERSION });
   });
 
   it('round-trips a saved file byte-for-byte through load', async () => {
-    const settings = { ...defaultSettings(), version: 1, keyboardScheme: 'vim' as const };
+    const settings = { ...defaultSettings(), version: SETTINGS_VERSION, keyboardScheme: 'vim' as const };
     await saveSettings(dir, settings);
     expect(await loadSettings(dir)).toEqual(settings);
     // Version field is actually on disk, not just in memory.
     const onDisk = JSON.parse(await readFile(settingsPath(dir), 'utf8')) as { version: number };
-    expect(onDisk.version).toBe(1);
+    expect(onDisk.version).toBe(SETTINGS_VERSION);
   });
 
   it('creates the config dir recursively on save', async () => {

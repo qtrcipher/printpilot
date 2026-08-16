@@ -1,5 +1,7 @@
 import { isLoginUrl } from '../main/adapters';
+import type { GamepadMapping } from '../main/settings-schema';
 import type { ConnectResult, ConnectTargetInput, PrintPilotBridge } from '../preload/index';
+import type { NavEvent } from '../preload/nav-layer';
 
 /**
  * Control view (design doc §7): embeds the printer's Remote UI in a
@@ -18,9 +20,17 @@ import type { ConnectResult, ConnectTargetInput, PrintPilotBridge } from '../pre
  * on, no remote module).
  */
 
+/** Input config threaded to the guest nav layer on connect (settings.json). */
+export interface NavInputConfig {
+  gamepad: GamepadMapping;
+  keyMap: Record<string, NavEvent>;
+}
+
 export interface ControlViewDeps {
   getBridge(): PrintPilotBridge | undefined;
   showToast(message: string): void;
+  /** Resolved gamepad mapping + key overrides for the guest nav layer. */
+  getNavConfig?(): NavInputConfig;
   /** Called when the user returns to Home. */
   onExit(): void;
 }
@@ -29,6 +39,8 @@ export interface ControlView {
   connect(target: ConnectTargetInput): Promise<void>;
   /** True while the control view is on screen. */
   readonly active: boolean;
+  /** Debug menu (dev builds): open the embedded page's DevTools. */
+  openGuestDevTools(): void;
 }
 
 function el<T extends HTMLElement>(selector: string): T {
@@ -93,6 +105,7 @@ export function createControlView(deps: ControlViewDeps): ControlView {
   function setOnline(online: boolean): void {
     dot.className = `status-dot ${online ? 'status-dot--online' : 'status-dot--offline'}`;
     dot.title = online ? 'Connected' : 'Not connected';
+    dot.setAttribute('aria-label', online ? 'Connected' : 'Not connected');
   }
 
   function renderHints(gamepad: boolean): void {
@@ -144,9 +157,12 @@ export function createControlView(deps: ControlViewDeps): ControlView {
 
     guest.addEventListener('dom-ready', () => {
       if (!connection || loadFailed) return; // error page's dom-ready — stay on the banner
+      const nav = deps.getNavConfig?.();
       guest.send('nav:config', {
         adapter: connection.adapter,
         profileId: target?.profileId,
+        gamepad: nav?.gamepad,
+        keyMap: nav?.keyMap,
       });
       show('success');
       setOnline(true);
@@ -277,6 +293,9 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     connect,
     get active() {
       return !view.hidden;
+    },
+    openGuestDevTools() {
+      webview?.openDevTools();
     },
   };
 }

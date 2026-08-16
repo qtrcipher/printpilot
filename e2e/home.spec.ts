@@ -1,27 +1,16 @@
-import { expect, test, _electron as electron } from 'playwright/test';
+import { expect, test } from 'playwright/test';
+import { firstPage, launchApp } from './launch';
 
 /**
  * Electron shell Home-screen tests (house rule: automated verification only).
  * Requires `npm run build` first — wired into the `test:e2e` script.
- *
- * Determinism: PRINTPILOT_FAKE_DISCOVERY=1 swaps mDNS/SNMP/HTTP for a
- * no-network stub (no printers exist on the CI network anyway), and
- * PRINTPILOT_SCAN_WINDOW_MS shrinks the scan window — no real timeouts.
+ * Launch determinism lives in e2e/launch.ts (fake discovery, short scan
+ * window, seeded throwaway config dir, dark OS scheme).
  */
-async function launchApp() {
-  return electron.launch({
-    args: ['.'],
-    env: {
-      ...process.env,
-      PRINTPILOT_FAKE_DISCOVERY: '1',
-      PRINTPILOT_SCAN_WINDOW_MS: '300',
-    },
-  });
-}
 
 test('app launches, scan settles into the empty state, focus ring is visible', async () => {
   const app = await launchApp();
-  const page = await app.firstWindow();
+  const page = await firstPage(app);
 
   try {
     expect(await page.title()).toBe('PrintPilot');
@@ -35,7 +24,9 @@ test('app launches, scan settles into the empty state, focus ring is visible', a
     await expect(page.locator('#manual-add')).toBeVisible();
 
     // Hard requirement: visible focus ring on interactive elements.
-    // Tab order = visual order: IP input → Check → Scan for printers.
+    // Tab order = visual order: Settings gear → IP input → Check → Scan.
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#settings-button')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.locator('#ip-input')).toBeFocused();
     await page.keyboard.press('Tab');
@@ -50,7 +41,7 @@ test('app launches, scan settles into the empty state, focus ring is visible', a
     });
     expect(ring.style).toBe('solid');
     expect(ring.width).toBe('2px');
-    expect(ring.color).toBe('rgb(96, 165, 250)'); // --focus-ring #60A5FA
+    expect(ring.color).toBe('rgb(96, 165, 250)'); // --focus-ring #60A5FA (dark theme)
   } finally {
     await app.close();
   }
@@ -58,7 +49,7 @@ test('app launches, scan settles into the empty state, focus ring is visible', a
 
 test('manual-IP rejects invalid input inline, without any network call', async () => {
   const app = await launchApp();
-  const page = await app.firstWindow();
+  const page = await firstPage(app);
 
   try {
     await expect(page.locator('#empty-state')).toBeVisible();
@@ -77,7 +68,7 @@ test('manual-IP rejects invalid input inline, without any network call', async (
 
 test('valid-format IP shows the unreachable classification with a fix hint', async () => {
   const app = await launchApp();
-  const page = await app.firstWindow();
+  const page = await firstPage(app);
 
   try {
     await expect(page.locator('#empty-state')).toBeVisible();

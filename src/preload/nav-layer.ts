@@ -9,7 +9,15 @@
  * Phase 2: interfaces + synthetic source (tests), keyboard/gamepad sources,
  * the roving-focus ring engine, and Remote UI login detection. The webview
  * preload (src/preload/webview.ts) composes these inside the embedded page.
+ *
+ * Remapping (design doc §7): the gamepad source resolves presses through
+ * the saved GamepadMapping (buttons/axes per action, defaults fill unmapped
+ * actions); the keyboard source applies saved key overrides before its
+ * built-in scheme. Both are threaded from settings.json by the shell via
+ * the `nav:config` message (src/preload/webview.ts).
  */
+
+import { DEFAULT_GAMEPAD_MAPPING, type GamepadBinding, type GamepadMapping } from '../main/settings-schema';
 
 export type NavDirection = 'up' | 'down' | 'left' | 'right';
 
@@ -145,7 +153,11 @@ export class KeyboardInputSource implements InputSource {
   private running = false;
   private readonly listener = (event: KeyboardEvent): void => this.onKeydown(event);
 
-  constructor(private readonly target: Window) {}
+  constructor(
+    private readonly target: Window,
+    /** Saved key overrides (settings.json gamepad remap, key bindings). */
+    private readonly keyMap: Readonly<Record<string, NavEvent>> = {},
+  ) {}
 
   start(): void {
     if (this.running) return;
@@ -182,6 +194,14 @@ export class KeyboardInputSource implements InputSource {
       this.dispatch({ type: 'step', delta: event.shiftKey ? -1 : 1 });
       return;
     }
+    // Saved key overrides win over the built-in scheme (custom mapping
+    // overrides defaults, design doc §7).
+    const custom = this.keyMap[event.key];
+    if (custom) {
+      event.preventDefault();
+      this.dispatch(custom);
+      return;
+    }
     const navEvent = mapKeyToNavEvent(event.key);
     if (navEvent) {
       event.preventDefault();
@@ -201,6 +221,8 @@ export interface GamepadDeps {
   requestFrame?: (cb: () => void) => number;
   cancelFrame?: (handle: number) => void;
   now?: () => number;
+  /** Resolved mapping from settings.json; defaults when absent/unmapped. */
+  mapping?: GamepadMapping;
 }
 
 /** Minimal shape so tests can feed synthetic pads without the real Gamepad type. */
@@ -212,8 +234,8 @@ export interface GamepadLike {
 export const GAMEPAD_DEADZONE = 0.4;
 export const GAMEPAD_REPEAT_MS = 150;
 
-const BUTTON_ACTIVATE = 0; // A
-const BUTTON_BACK = 1; // B
+// The standard-layout D-pad always works, whatever the mapping — it is how
+// pads without remappable sticks move, and it never conflicts with defaults.
 const DPAD: ReadonlyArray<[number, NavDirection]> = [
   [12, 'up'],
   [13, 'down'],
@@ -221,21 +243,53 @@ const DPAD: ReadonlyArray<[number, NavDirection]> = [
   [15, 'right'],
 ];
 
-function directionFromPad(pad: GamepadLike, deadzone: number): NavDirection | null {
+const DIRECTIONS: readonly NavDirection[] = ['up', 'down', 'left', 'right'];
+
+/** True when a button/axis binding is currently actuated (key bindings are not gamepad input). */
+function bindingActive(pad: GamepadLike, binding: GamepadBinding, deadzone: number): boolean {
+  switch (binding.kind) {
+    case 'button':
+      return Boolean(pad.buttons[binding.index]?.pressed);
+    case 'axis':
+      return (pad.axes[binding.axis] ?? 0) * binding.sign >= deadzone;
+    case 'key':
+      return false;
+  }
+}
+
+function directionFromPad(
+  pad: GamepadLike,
+  mapping: GamepadMapping,
+  deadzone: number,
+): NavDirection | null {
   for (const [index, direction] of DPAD) {
     if (pad.buttons[index]?.pressed) return direction;
   }
-  const x = pad.axes[0] ?? 0;
-  const y = pad.axes[1] ?? 0;
-  if (Math.max(Math.abs(x), Math.abs(y)) < deadzone) return null;
-  return Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : y > 0 ? 'down' : 'up';
+  // Button-bound directions first (unambiguous single-press semantics).
+  for (const direction of DIRECTIONS) {
+    const binding = mapping[direction];
+    if (binding.kind === 'button' && bindingActive(pad, binding, deadzone)) return direction;
+  }
+  // Axis-bound directions: dominant deflection wins, mirroring stick feel.
+  let best: { direction: NavDirection; magnitude: number } | null = null;
+  for (const direction of DIRECTIONS) {
+    const binding = mapping[direction];
+    if (binding.kind !== 'axis') continue;
+    const magnitude = (pad.axes[binding.axis] ?? 0) * binding.sign;
+    if (magnitude >= deadzone && (!best || magnitude > best.magnitude)) {
+      best = { direction, magnitude };
+    }
+  }
+  return best?.direction ?? null;
 }
 
 /**
  * Gamepad API polling source (design doc §3): D-pad/left-stick → focus move
- * with ~150ms auto-repeat, button 0 (A) → activate, button 1 (B) → back.
- * Rising edge emits immediately; holds repeat. Timing and frame pumping are
- * injectable so tests drive synthetic pads deterministically.
+ * with ~150ms auto-repeat, button 0 (A) → activate, button 1 (B) → back by
+ * default. Saved mappings (settings.json) rebind any action to another
+ * button/axis; unmapped actions fall back to these defaults. Rising edge
+ * emits immediately; holds repeat. Timing and frame pumping are injectable
+ * so tests drive synthetic pads deterministically.
  */
 export class GamepadInputSource implements InputSource {
   readonly kind = 'gamepad' as const;
@@ -250,6 +304,7 @@ export class GamepadInputSource implements InputSource {
   private readonly requestFrame: (cb: () => void) => number;
   private readonly cancelFrame: (handle: number) => void;
   private readonly now: () => number;
+  private readonly mapping: GamepadMapping;
 
   constructor(
     win: Window,
@@ -261,6 +316,7 @@ export class GamepadInputSource implements InputSource {
     this.requestFrame = deps.requestFrame ?? ((cb) => win.requestAnimationFrame(cb));
     this.cancelFrame = deps.cancelFrame ?? ((handle) => win.cancelAnimationFrame(handle));
     this.now = deps.now ?? (() => win.performance.now());
+    this.mapping = deps.mapping ?? DEFAULT_GAMEPAD_MAPPING;
   }
 
   start(): void {
@@ -297,9 +353,9 @@ export class GamepadInputSource implements InputSource {
     let back = false;
     for (const pad of this.getGamepads()) {
       if (!pad) continue;
-      direction = direction ?? directionFromPad(pad, this.deadzone);
-      activate = activate || Boolean(pad.buttons[BUTTON_ACTIVATE]?.pressed);
-      back = back || Boolean(pad.buttons[BUTTON_BACK]?.pressed);
+      direction = direction ?? directionFromPad(pad, this.mapping, this.deadzone);
+      activate = activate || bindingActive(pad, this.mapping.activate, this.deadzone);
+      back = back || bindingActive(pad, this.mapping.back, this.deadzone);
     }
 
     if (direction) {
