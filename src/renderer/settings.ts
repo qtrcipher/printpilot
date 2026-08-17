@@ -62,6 +62,7 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
   const backButton = el<HTMLButtonElement>('#settings-back');
   const themeSelect = el<HTMLSelectElement>('#theme-select');
   const onScreenPadSelect = el<HTMLSelectElement>('#onscreen-pad-select');
+  const onScreenKeyboardSelect = el<HTMLSelectElement>('#onscreen-keyboard-select');
   const remapList = el<HTMLUListElement>('#remap-list');
   const remapReset = el<HTMLButtonElement>('#remap-reset');
   const scanWindowInput = el<HTMLInputElement>('#scan-window-input');
@@ -238,6 +239,19 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
       .catch((err: unknown) => deps.showToast(err instanceof Error ? err.message : String(err)));
   });
 
+  onScreenKeyboardSelect.addEventListener('change', () => {
+    const bridge = deps.getBridge();
+    if (!bridge) return;
+    const onScreenKeyboard = onScreenKeyboardSelect.value as SettingsFile['onScreenKeyboard'];
+    void bridge
+      .updateSettings({ onScreenKeyboard })
+      .then((updated) => {
+        settings = updated;
+        deps.onSettingsChanged(updated);
+      })
+      .catch((err: unknown) => deps.showToast(err instanceof Error ? err.message : String(err)));
+  });
+
   remapReset.addEventListener('click', () => {
     remapReset.disabled = true;
     void saveGamepad({})
@@ -321,6 +335,7 @@ export function createSettingsView(deps: SettingsViewDeps): SettingsView {
       settings = next;
       themeSelect.value = next.theme;
       onScreenPadSelect.value = next.onScreenPad;
+      onScreenKeyboardSelect.value = next.onScreenKeyboard;
       scanWindowInput.value = String(next.discovery.scanWindowMs);
       versionLabel.textContent = `v${deps.getAppInfo()?.version ?? '?'}`;
       logPathLabel.textContent = deps.getAppInfo()?.logFilePath ?? '';

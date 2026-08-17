@@ -31,7 +31,10 @@ const CONTROL_MARKUP = `
       <button id="credential-dismiss"></button>
     </div>
     <footer id="hint-bar"></footer>
+    <button id="osk-toggle" aria-pressed="false"></button>
     <span id="nav-focus-probe"></span>
+    <span id="osk-status"></span>
+    <span id="osk-text-probe"></span>
   </section>`;
 
 const CANON_ADAPTER = validateAdapterManifest({
@@ -235,5 +238,101 @@ describe('control view on-screen D-pad', () => {
     expect(el('#nav-pad').hidden).toBe(false);
     view.setPadVisible(false);
     expect(el('#nav-pad').hidden).toBe(true);
+  });
+});
+
+describe('control view on-screen keyboard', () => {
+  beforeEach(() => {
+    document.body.innerHTML = CONTROL_MARKUP;
+  });
+
+  function pressKey(selector: string): void {
+    el(selector).dispatchEvent(new Event('pointerdown', { cancelable: true }));
+  }
+
+  it('auto-shows when the guest reports text focus, hides on blur, and types via insertText', async () => {
+    const bridge = fakeBridge();
+    const view = createControlView({
+      getBridge: () => bridge,
+      showToast: vi.fn(),
+      onExit: vi.fn(),
+    });
+    await view.connect({ nickname: 'Office MF750', host: '192.168.1.50' });
+    const guest = document.querySelector('webview')!;
+    const insertText = vi.fn();
+    const sendInputEvent = vi.fn();
+    const send = vi.fn();
+    Object.assign(guest, { insertText, sendInputEvent, send });
+
+    expect(el('#osk').hidden).toBe(true);
+    guestEvent(guest, 'ipc-message', { channel: 'nav:text-focus', args: [{ active: true }] });
+    expect(el('#osk').hidden).toBe(false);
+    expect(el('#osk-status').textContent).toBe('On-screen keyboard shown.');
+    expect(el<HTMLButtonElement>('#osk-toggle').getAttribute('aria-pressed')).toBe('true');
+
+    pressKey('#osk [data-text="p"]');
+    expect(insertText).toHaveBeenCalledWith('p');
+    pressKey('#osk-backspace');
+    expect(sendInputEvent).toHaveBeenCalledWith({ type: 'keyDown', keyCode: 'Backspace' });
+    expect(sendInputEvent).toHaveBeenCalledWith({ type: 'keyUp', keyCode: 'Backspace' });
+    pressKey('#osk-enter');
+    expect(send).toHaveBeenCalledWith('osk:enter'); // guest-side requestSubmit
+
+    guestEvent(guest, 'ipc-message', { channel: 'nav:text-focus', args: [{ active: false }] });
+    expect(el('#osk').hidden).toBe(true);
+    expect(el('#osk-status').textContent).toBe('On-screen keyboard hidden.');
+  });
+
+  it('dismiss hides the keyboard until text focus changes', async () => {
+    const bridge = fakeBridge();
+    const view = createControlView({
+      getBridge: () => bridge,
+      showToast: vi.fn(),
+      onExit: vi.fn(),
+    });
+    await view.connect({ nickname: 'Office MF750', host: '192.168.1.50' });
+    const guest = document.querySelector('webview')!;
+    guestEvent(guest, 'ipc-message', { channel: 'nav:text-focus', args: [{ active: true }] });
+    expect(el('#osk').hidden).toBe(false);
+    pressKey('#osk-dismiss');
+    expect(el('#osk').hidden).toBe(true);
+    // Still in the field: stays hidden. Refocus: shows again.
+    guestEvent(guest, 'ipc-message', { channel: 'nav:text-focus', args: [{ active: false }] });
+    guestEvent(guest, 'ipc-message', { channel: 'nav:text-focus', args: [{ active: true }] });
+    expect(el('#osk').hidden).toBe(false);
+  });
+
+  it('manual toggle button shows and hides the keyboard', async () => {
+    const bridge = fakeBridge();
+    const view = createControlView({
+      getBridge: () => bridge,
+      showToast: vi.fn(),
+      onExit: vi.fn(),
+    });
+    await view.connect({ nickname: 'Office MF750', host: '192.168.1.50' });
+    el<HTMLButtonElement>('#osk-toggle').click();
+    expect(el('#osk').hidden).toBe(false);
+    el<HTMLButtonElement>('#osk-toggle').click();
+    expect(el('#osk').hidden).toBe(true);
+  });
+
+  it('respects never/always modes and mirrors the guest text value', async () => {
+    const bridge = fakeBridge();
+    const view = createControlView({
+      getBridge: () => bridge,
+      showToast: vi.fn(),
+      getOnScreenKeyboard: () => 'never',
+      onExit: vi.fn(),
+    });
+    await view.connect({ nickname: 'Office MF750', host: '192.168.1.50' });
+    const guest = document.querySelector('webview')!;
+    guestEvent(guest, 'ipc-message', { channel: 'nav:text-focus', args: [{ active: true }] });
+    expect(el('#osk').hidden).toBe(true); // never: stays hidden on text focus
+
+    view.setKeyboardMode('always');
+    expect(el('#osk').hidden).toBe(false);
+
+    guestEvent(guest, 'ipc-message', { channel: 'nav:text-value', args: [{ value: 'se' }] });
+    expect(el('#osk-text-probe').textContent).toBe('se');
   });
 });

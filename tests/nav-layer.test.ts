@@ -1,5 +1,7 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import {
+  isTextEntryElement,
   mapKeyToNavEvent,
   NavEventBus,
   sanitizeNavEvent,
@@ -116,5 +118,43 @@ describe('sanitizeNavEvent', () => {
 
   it('does not accept leave — it is shell-internal, not IPC-reachable', () => {
     expect(sanitizeNavEvent({ type: 'leave' })).toBeNull();
+  });
+});
+
+describe('isTextEntryElement', () => {
+  it('classifies text-entry input types', () => {
+    for (const type of ['text', 'password', 'email', 'search', 'number', 'url', 'tel']) {
+      const input = document.createElement('input');
+      input.type = type;
+      expect(isTextEntryElement(input), type).toBe(true);
+    }
+  });
+
+  it('rejects non-text inputs, buttons, links, and non-elements', () => {
+    for (const type of ['checkbox', 'radio', 'submit', 'button', 'hidden', 'file']) {
+      const input = document.createElement('input');
+      input.type = type;
+      expect(isTextEntryElement(input), type).toBe(false);
+    }
+    expect(isTextEntryElement(document.createElement('button'))).toBe(false);
+    expect(isTextEntryElement(document.createElement('a'))).toBe(false);
+    expect(isTextEntryElement(null)).toBe(false);
+    expect(isTextEntryElement('input')).toBe(false);
+  });
+
+  it('accepts textarea and contenteditable, rejects disabled/read-only fields', () => {
+    expect(isTextEntryElement(document.createElement('textarea'))).toBe(true);
+    const editable = document.createElement('div');
+    editable.setAttribute('contenteditable', 'true');
+    expect(isTextEntryElement(editable)).toBe(true);
+
+    const disabled = document.createElement('input');
+    disabled.type = 'text';
+    disabled.disabled = true;
+    expect(isTextEntryElement(disabled)).toBe(false);
+    const readOnly = document.createElement('input');
+    readOnly.type = 'password';
+    readOnly.readOnly = true;
+    expect(isTextEntryElement(readOnly)).toBe(false);
   });
 });

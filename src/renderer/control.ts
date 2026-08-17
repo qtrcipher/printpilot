@@ -1,8 +1,9 @@
 import { isLoginUrl } from '../main/adapters';
-import type { GamepadMapping } from '../main/settings-schema';
+import type { GamepadMapping, OnScreenKeyboardSetting } from '../main/settings-schema';
 import type { ConnectResult, ConnectTargetInput, PrintPilotBridge } from '../preload/index';
 import type { NavEvent } from '../preload/nav-layer';
 import { createDPad } from './dpad';
+import { createOsk } from './osk';
 
 /**
  * Control view (design doc §7): embeds the printer's Remote UI in a
@@ -34,6 +35,8 @@ export interface ControlViewDeps {
   getNavConfig?(): NavInputConfig;
   /** Settings toggle: on-screen navigation pad shown (default true). */
   getOnScreenPadVisible?(): boolean;
+  /** Settings toggle: on-screen keyboard mode (default 'auto'). */
+  getOnScreenKeyboard?(): OnScreenKeyboardSetting;
   /** Called when the user returns to Home. */
   onExit(): void;
 }
@@ -44,6 +47,8 @@ export interface ControlView {
   readonly active: boolean;
   /** Live-update the on-screen pad when the settings toggle changes. */
   setPadVisible(visible: boolean): void;
+  /** Live-update the on-screen keyboard mode when settings change. */
+  setKeyboardMode(mode: OnScreenKeyboardSetting): void;
   /** Debug menu (dev builds): open the embedded page's DevTools. */
   openGuestDevTools(): void;
 }
@@ -90,6 +95,9 @@ export function createControlView(deps: ControlViewDeps): ControlView {
   const webviewHost = el('#control-webview-host');
   const hintBar = el('#hint-bar');
   const focusProbe = el('#nav-focus-probe');
+  const oskToggle = el<HTMLButtonElement>('#osk-toggle');
+  const oskStatus = el('#osk-status');
+  const oskTextProbe = el('#osk-text-probe');
   const offer = el('#credential-offer');
   const offerText = el('#credential-offer-text');
   const offerSave = el<HTMLButtonElement>('#credential-save');
@@ -117,6 +125,68 @@ export function createControlView(deps: ControlViewDeps): ControlView {
   }
 
   (webviewHost.parentElement ?? view).append(pad.element);
+
+  // On-screen keyboard: text entry for the embedded page (Wi-Fi passwords,
+  // PINs). Characters go through webview.insertText; Backspace/Enter through
+  // sendInputEvent — text entry, not navigation, so no NavEvent path.
+  const osk = createOsk({
+    onText: (text) => {
+      if (webview && typeof webview.insertText === 'function') void webview.insertText(text);
+    },
+    onSpecialKey: (key) => {
+      if (key === 'enter') {
+        // Guest-side submit: sendInputEvent('Return') only emits rawKeyDown
+        // (no keypress), and implicit form submission happens on the keypress
+        // default action — so synthetic keys never submit. requestSubmit in
+        // the guest is deterministic and also fires the LoginWatcher.
+        if (webview && typeof webview.send === 'function') webview.send('osk:enter');
+        return;
+      }
+      if (!webview || typeof webview.sendInputEvent !== 'function') return;
+      // Editing/form default actions only run when the guest webContents
+      // holds focus — a click on shell chrome (e.g. the OSK toggle) may have
+      // taken it. Hand it back first.
+      webview.focus();
+      webview.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
+      webview.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
+    },
+    onDismiss: () => {
+      oskManual = false;
+      oskSuppressed = true; // stays hidden until the text focus changes
+      updateOskVisibility();
+    },
+  });
+  let oskMode: OnScreenKeyboardSetting = 'auto';
+  let textFocus = false;
+  let oskManual = false;
+  let oskSuppressed = false;
+  let oskAnnounced = false;
+
+  function updateOskVisibility(): void {
+    const next =
+      !view.hidden &&
+      oskMode !== 'never' &&
+      (oskMode === 'always' || (textFocus && !oskSuppressed) || oskManual);
+    osk.setVisible(next);
+    oskToggle.setAttribute('aria-pressed', String(next));
+    if (next !== oskAnnounced) {
+      oskAnnounced = next;
+      oskStatus.textContent = next ? 'On-screen keyboard shown.' : 'On-screen keyboard hidden.';
+    }
+  }
+
+  oskToggle.addEventListener('click', () => {
+    if (osk.visible) {
+      oskManual = false;
+      oskSuppressed = true;
+    } else {
+      oskManual = true;
+      oskSuppressed = false;
+    }
+    updateOskVisibility();
+  });
+
+  (webviewHost.parentElement ?? view).append(osk.element);
 
   function show(state: ControlState): void {
     loading.hidden = state !== 'loading';
@@ -226,6 +296,16 @@ export function createControlView(deps: ControlViewDeps): ControlView {
       } else if (event.channel === 'nav:login-submitted') {
         const [{ pin }] = event.args as [{ pin: string }];
         pendingPin = pin;
+      } else if (event.channel === 'nav:text-focus') {
+        // Text field focused/blurred in the guest → auto-show/hide the OSK.
+        const [{ active }] = event.args as [{ active: boolean }];
+        textFocus = active;
+        oskSuppressed = false;
+        if (!active) oskManual = false;
+        updateOskVisibility();
+      } else if (event.channel === 'nav:text-value') {
+        const [{ value }] = event.args as [{ value: string }];
+        oskTextProbe.textContent = value;
       } else if (event.channel === 'log:guest') {
         // Guest page errors → main's rotating log (design doc §5).
         const [{ message }] = event.args as [{ message: string }];
@@ -242,6 +322,12 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     view.hidden = false;
     padEnabled = deps.getOnScreenPadVisible?.() ?? true;
     updatePadVisibility();
+    oskMode = deps.getOnScreenKeyboard?.() ?? 'auto';
+    textFocus = false;
+    oskManual = false;
+    oskSuppressed = false;
+    oskTextProbe.textContent = '';
+    updateOskVisibility();
     nameLabel.textContent = nextTarget.nickname;
     hostLabel.textContent =
       nextTarget.port && nextTarget.port !== 80
@@ -287,6 +373,9 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     hideOffer();
     view.hidden = true;
     updatePadVisibility();
+    textFocus = false;
+    oskManual = false;
+    updateOskVisibility();
     deps.onExit();
   }
 
@@ -324,6 +413,10 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     setPadVisible(visible) {
       padEnabled = visible;
       updatePadVisibility();
+    },
+    setKeyboardMode(mode) {
+      oskMode = mode;
+      updateOskVisibility();
     },
     openGuestDevTools() {
       webview?.openDevTools();

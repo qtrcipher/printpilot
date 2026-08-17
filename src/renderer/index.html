@@ -135,11 +135,24 @@
         <button type="button" class="btn btn--secondary" id="credential-dismiss">Not now</button>
       </div>
 
-      <footer class="hint-bar" id="hint-bar" aria-label="Input hints" aria-live="polite"></footer>
+      <div class="hint-row">
+        <footer class="hint-bar" id="hint-bar" aria-label="Input hints" aria-live="polite"></footer>
+        <button
+          type="button"
+          class="btn btn--secondary hint-row__osk-toggle"
+          id="osk-toggle"
+          aria-label="Toggle on-screen keyboard"
+          aria-pressed="false"
+          title="On-screen keyboard"
+        >⌨</button>
+      </div>
       <!-- Screen-reader announcement channel for in-page focus: the guest nav
            layer mirrors every focus-ring change into this polite live region
            (also used by the e2e suite as #nav-focus-probe). -->
       <span class="visually-hidden" id="nav-focus-probe" aria-live="polite"></span>
+      <!-- On-screen keyboard announcements + text-field mirror (e2e). -->
+      <span class="visually-hidden" id="osk-status" aria-live="polite"></span>
+      <span class="visually-hidden" id="osk-text-probe"></span>
     </section>
 
     <section class="settings" id="settings-view" hidden aria-labelledby="settings-title">
@@ -164,6 +177,14 @@
             <select class="input settings__control" id="onscreen-pad-select">
               <option value="show">Show in control view</option>
               <option value="hide">Hide</option>
+            </select>
+          </div>
+          <div class="settings__row">
+            <label class="settings__label" for="onscreen-keyboard-select">On-screen keyboard</label>
+            <select class="input settings__control" id="onscreen-keyboard-select">
+              <option value="auto">Auto — shows for text fields</option>
+              <option value="always">Always show in control view</option>
+              <option value="never">Never show</option>
             </select>
           </div>
         </section>

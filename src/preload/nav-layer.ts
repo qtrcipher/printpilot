@@ -63,6 +63,31 @@ export function mapKeyToNavEvent(key: string): NavEvent | null {
 
 const NAV_DIRECTIONS: readonly NavDirection[] = ['up', 'down', 'left', 'right'];
 
+const TEXT_INPUT_TYPES: ReadonlySet<string> = new Set([
+  'text',
+  'password',
+  'email',
+  'search',
+  'number',
+  'url',
+  'tel',
+]);
+
+/**
+ * True when an element accepts free-text entry (on-screen keyboard target).
+ * Disabled/read-only fields are excluded — they can't receive text.
+ */
+export function isTextEntryElement(value: unknown): boolean {
+  if (!(value instanceof HTMLElement)) return false;
+  if (value instanceof HTMLTextAreaElement) return !value.disabled && !value.readOnly;
+  if (value instanceof HTMLInputElement) {
+    return TEXT_INPUT_TYPES.has(value.type) && !value.disabled && !value.readOnly;
+  }
+  // isContentEditable is unset in some engines (jsdom); check the attr too.
+  const attr = value.getAttribute('contenteditable');
+  return value.isContentEditable === true || attr === '' || attr === 'true';
+}
+
 /**
  * Validate an untrusted NavEvent arriving over IPC (shell → guest, e.g. the
  * on-screen D-pad). Returns null for anything malformed. The `leave` event

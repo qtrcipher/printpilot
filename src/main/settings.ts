@@ -49,6 +49,7 @@ export async function updateSettings(configDir: string, patch: SettingsPatch): P
     },
     onboardingSeen: patch.onboardingSeen ?? current.onboardingSeen,
     onScreenPad: patch.onScreenPad ?? current.onScreenPad,
+    onScreenKeyboard: patch.onScreenKeyboard ?? current.onScreenKeyboard,
   };
   await saveSettings(configDir, next);
   return next;

@@ -132,6 +132,7 @@ const controlView = createControlView({
   showToast,
   getNavConfig: buildNavConfig,
   getOnScreenPadVisible: () => settings?.onScreenPad !== 'hide',
+  getOnScreenKeyboard: () => settings?.onScreenKeyboard ?? 'auto',
   onExit: () => {
     homeView.hidden = false;
     scanButton.focus();
@@ -154,6 +155,7 @@ const settingsView = createSettingsView({
     applyTheme(updated.theme);
     scanWindowMs = updated.discovery.scanWindowMs;
     controlView.setPadVisible(updated.onScreenPad === 'show');
+    controlView.setKeyboardMode(updated.onScreenKeyboard);
   },
   onShowWelcome: () => {
     reshowingWelcome = true;

@@ -167,3 +167,30 @@ describe('on-screen pad setting', () => {
     expect(validateSettingsPatch({ onScreenPad: 'show' })).toEqual({ onScreenPad: 'show' });
   });
 });
+
+describe('on-screen keyboard setting', () => {
+  it('defaults to auto and fills auto for older files without the field', async () => {
+    expect(defaultSettings().onScreenKeyboard).toBe('auto');
+    await writeFile(settingsPath(dir), JSON.stringify({ version: 2, onboardingSeen: true }));
+    expect((await loadSettings(dir)).onScreenKeyboard).toBe('auto');
+  });
+
+  it('rejects garbage values instead of silently keeping them', () => {
+    expect(() => sanitizeSettings({ onScreenKeyboard: 'yes' })).toThrow(SettingsValidationError);
+    expect(() => sanitizeSettings({ onScreenKeyboard: 0 })).toThrow(SettingsValidationError);
+    expect(sanitizeSettings({ onScreenKeyboard: 'always' }).onScreenKeyboard).toBe('always');
+    expect(sanitizeSettings({ onScreenKeyboard: 'never' }).onScreenKeyboard).toBe('never');
+  });
+
+  it('persists the mode via updateSettings and validates the patch at the IPC boundary', async () => {
+    const updated = await updateSettings(dir, { onScreenKeyboard: 'never' });
+    expect(updated.onScreenKeyboard).toBe('never');
+    expect((await loadSettings(dir)).onScreenKeyboard).toBe('never');
+    expect(() => validateSettingsPatch({ onScreenKeyboard: 'sometimes' })).toThrow(
+      /onScreenKeyboard/,
+    );
+    expect(validateSettingsPatch({ onScreenKeyboard: 'auto' })).toEqual({
+      onScreenKeyboard: 'auto',
+    });
+  });
+});

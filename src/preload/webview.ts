@@ -2,6 +2,7 @@ import { ipcRenderer } from 'electron';
 import {
   FocusRing,
   GamepadInputSource,
+  isTextEntryElement,
   KeyboardInputSource,
   LoginWatcher,
   NavEventBus,
@@ -46,6 +47,40 @@ function describe(element: HTMLElement): string {
 function startNavLayer(config: NavConfig): void {
   adapter = config.adapter;
 
+  // Text-entry focus tracking for the on-screen keyboard: the shell shows
+  // the keyboard when a text field gains focus, hides it when focus leaves
+  // (moving between two text fields keeps it up — relatedTarget check).
+  // Registered BEFORE the focus ring starts: ring.start() focuses the first
+  // element, which may itself be a text field (e.g. the login PIN input).
+  document.addEventListener('focusin', (event) => {
+    if (isTextEntryElement(event.target)) {
+      ipcRenderer.sendToHost('nav:text-focus', { active: true });
+    }
+  });
+  document.addEventListener('focusout', (event) => {
+    if (
+      isTextEntryElement(event.target) &&
+      !isTextEntryElement((event as FocusEvent).relatedTarget)
+    ) {
+      ipcRenderer.sendToHost('nav:text-focus', { active: false });
+    }
+  });
+  // Value mirror while a text field is focused (drives the shell-side probe;
+  // same trust domain as the credential-offer PIN flow). Truncated.
+  document.addEventListener(
+    'input',
+    (event) => {
+      if (!isTextEntryElement(event.target)) return;
+      const el = event.target as HTMLElement;
+      const value =
+        el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+          ? el.value
+          : (el.textContent ?? '');
+      ipcRenderer.sendToHost('nav:text-value', { value: value.slice(0, 200) });
+    },
+    true,
+  );
+
   ring = new FocusRing(document, {
     skipSelectors: adapter.focusSkip,
     onFocusChange: (element) => {
@@ -53,6 +88,12 @@ function startNavLayer(config: NavConfig): void {
     },
   });
   ring.start();
+
+  // Programmatic focus() in a still-blurred document may not fire focusin —
+  // report the initial state explicitly so auto-show can't be missed.
+  if (isTextEntryElement(document.activeElement)) {
+    ipcRenderer.sendToHost('nav:text-focus', { active: true });
+  }
 
   const dispatch = (event: NavEvent): void => {
     if (event.type === 'leave') {
@@ -75,6 +116,20 @@ function startNavLayer(config: NavConfig): void {
   ipcRenderer.on('nav:event', (_event, payload: unknown) => {
     const event = sanitizeNavEvent(payload);
     if (event) dispatch(event);
+  });
+
+  // On-screen keyboard Enter: submit the focused field's form (or click the
+  // focused control). Synthetic key events can't express implicit form
+  // submission (no keypress leg), so this is DOM-level and deterministic.
+  ipcRenderer.on('osk:enter', () => {
+    const active = document.activeElement;
+    const form = active instanceof HTMLElement ? active.closest('form') : null;
+    if (form) {
+      if (typeof form.requestSubmit === 'function') form.requestSubmit();
+      else form.submit();
+    } else if (active instanceof HTMLElement) {
+      active.click();
+    }
   });
 
   loginWatcher = new LoginWatcher(document, adapter.login, (pin) => {

@@ -99,6 +99,13 @@ export type ThemeSetting = 'dark' | 'light' | 'system';
 /** On-screen navigation pad visibility in the control view (default: shown). */
 export type OnScreenPadSetting = 'show' | 'hide';
 
+/**
+ * On-screen keyboard visibility: auto = appears when a text field is focused
+ * in the embedded page (default), always = pinned in the control view,
+ * never = off.
+ */
+export type OnScreenKeyboardSetting = 'auto' | 'always' | 'never';
+
 export interface WindowState {
   width: number;
   height: number;
@@ -120,6 +127,7 @@ export interface SettingsFile {
   /** First-run welcome shown until dismissed (design doc §7). */
   onboardingSeen: boolean;
   onScreenPad: OnScreenPadSetting;
+  onScreenKeyboard: OnScreenKeyboardSetting;
 }
 
 export const SETTINGS_VERSION = 2;
@@ -159,6 +167,7 @@ export function defaultSettings(): Omit<SettingsFile, 'version'> {
     discovery: { mdnsEnabled: true, snmpEnabled: true, scanWindowMs: 5000 },
     onboardingSeen: false,
     onScreenPad: 'show',
+    onScreenKeyboard: 'auto',
   };
 }
 
@@ -226,7 +235,7 @@ function sanitizeDiscovery(value: unknown): SettingsFile['discovery'] {
  */
 export function sanitizeSettings(data: Record<string, unknown>): Omit<SettingsFile, 'version'> {
   const defaults = defaultSettings();
-  const { theme, keyboardScheme, onboardingSeen, onScreenPad } = data;
+  const { theme, keyboardScheme, onboardingSeen, onScreenPad, onScreenKeyboard } = data;
   if (theme !== undefined && theme !== 'dark' && theme !== 'light' && theme !== 'system') {
     fail('theme');
   }
@@ -239,6 +248,14 @@ export function sanitizeSettings(data: Record<string, unknown>): Omit<SettingsFi
   if (onScreenPad !== undefined && onScreenPad !== 'show' && onScreenPad !== 'hide') {
     fail('onScreenPad');
   }
+  if (
+    onScreenKeyboard !== undefined &&
+    onScreenKeyboard !== 'auto' &&
+    onScreenKeyboard !== 'always' &&
+    onScreenKeyboard !== 'never'
+  ) {
+    fail('onScreenKeyboard');
+  }
   return {
     theme: theme ?? defaults.theme,
     gamepad: sanitizeGamepad(data.gamepad),
@@ -247,6 +264,7 @@ export function sanitizeSettings(data: Record<string, unknown>): Omit<SettingsFi
     discovery: sanitizeDiscovery(data.discovery),
     onboardingSeen: onboardingSeen ?? defaults.onboardingSeen,
     onScreenPad: onScreenPad ?? defaults.onScreenPad,
+    onScreenKeyboard: onScreenKeyboard ?? defaults.onScreenKeyboard,
   };
 }
 
@@ -257,6 +275,7 @@ export interface SettingsPatch {
   discovery?: { scanWindowMs?: number };
   onboardingSeen?: boolean;
   onScreenPad?: OnScreenPadSetting;
+  onScreenKeyboard?: OnScreenKeyboardSetting;
 }
 
 export function validateSettingsPatch(input: unknown): SettingsPatch {
@@ -298,6 +317,16 @@ export function validateSettingsPatch(input: unknown): SettingsPatch {
       throw new Error('onScreenPad must be show or hide');
     }
     patch.onScreenPad = raw.onScreenPad;
+  }
+  if (raw.onScreenKeyboard !== undefined) {
+    if (
+      raw.onScreenKeyboard !== 'auto' &&
+      raw.onScreenKeyboard !== 'always' &&
+      raw.onScreenKeyboard !== 'never'
+    ) {
+      throw new Error('onScreenKeyboard must be auto, always, or never');
+    }
+    patch.onScreenKeyboard = raw.onScreenKeyboard;
   }
   return patch;
 }
