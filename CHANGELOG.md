@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-08-17
 
 First public release — born from a Canon imageCLASS MF750 with a dead
-touchscreen. Functional against mock Canon fixtures; real-device fixture
-recordings are the next milestone.
+touchscreen. Verified against a real MF750 on-device; recorded-device
+fixtures (to replace the hand-built mocks) are the next milestone.
 
 ### Added
 
@@ -22,6 +22,14 @@ recordings are the next milestone.
 - **Navigation layer** — full keyboard control (arrows/Tab, Enter, Esc,
   `Ctrl+``) and gamepad control (D-pad/stick, A/B) with press-to-assign
   remapping in Settings.
+- **On-screen D-pad** — pointer-driven arrows + OK + Back overlay with
+  hold-to-repeat, for driving menus with a mouse or touchscreen.
+- **On-screen keyboard** — appears automatically when a text field is
+  focused (Wi-Fi passwords, PINs); types via real text insertion; Enter
+  submits the printer's forms.
+- **Offline recovery guide** — when a printer can't be reached, ordered
+  recovery paths (Ethernet, Direct Connection AP, Canon's USB tool) right
+  in the error/empty states.
 - **Profiles** — multiple printers saved locally; Remote UI PINs stored in
   the OS keychain (Electron `safeStorage`), never in plain files.
 - **Adapters** — per-model support as data (`adapters/canon-mf750.json`
