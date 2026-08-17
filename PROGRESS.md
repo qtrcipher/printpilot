@@ -56,10 +56,11 @@
 ## Phase 6 — Release
 - [x] README with screenshots, install instructions, supported-printer matrix
 - [x] Privacy note (LAN-only; nothing leaves the machine — verified: no telemetry, no update check)
-- [ ] v1.0.0 tag AFTER release artifacts are published — tags are for releases only (AWAITING: real fixtures + user go-ahead; likely v0.1.0 first)
+- [x] v0.1.0 tagged + released via pipeline (installers + SHA256SUMS on GitHub Releases). v1.0.0 still open: wants recorded fixtures + broader hardware reports — tags are for releases only
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
+- 2026-08-17 — v0.1.0 RELEASED (github.com/qtrcipher/printpilot/releases/tag/v0.1.0): nsis+portable, AppImage+deb, SHA256SUMS; verified working on the user's real MF750. Open: record real fixtures → v0.1.1; hardware reports → v1.0.0
 - 2026-08-17 — Phase 6 prep: README screenshots (5, captured via e2e), privacy note (nothing leaves the machine, code-verified), honest printer matrix. Phase 5 mostly closed — one item blocked on hardware (recorded fixtures). Watch: OSK e2e flaked once locally — next: real MF750 fixtures, then v0.1.0
 - 2026-08-17 — Offline recovery guide added (Ethernet / Direct Connection / Canon USB tool) in control-error banner, empty state, and offline-profile state. 226 unit + 15 e2e — next: real MF750 fixtures, then v0.1.0
 - 2026-08-17 — On-screen D-pad added (third InputSource: pointer, arrows+OK+Back, hold repeat, settings toggle); release dry-run artifacts verified by download (real nsis/portable/AppImage/deb + valid SHA256SUMS). 199 unit + 13 e2e — next: real MF750 fixtures, then v0.1.0
