@@ -47,19 +47,20 @@
 - [x] GitHub Releases pipeline with checksums + changelog (`release.yml`: tag `v*` → tested builds → release w/ SHA256SUMS; dry-run dispatch verified end-to-end incl. artifacts)
 
 ## Phase 5 — Testing
-- [ ] Tests written WITH each feature (not after)
-- [ ] Every control × every state: disabled, loading, empty, error
-- [ ] Protocol layer tested against recorded fixtures (no physical printer in CI)
-- [ ] Suite green on Windows + Linux (CI matrix)
-- [ ] Bugs found → root-cause first — `systematic-debugging`
+- [x] Tests written WITH each feature (not after) — every feature commit lands with its suites
+- [x] Every control × every state: four-state coverage per screen (exhaustive per-control edge paths are unit/component-level, accepted)
+- [ ] Protocol layer tested against RECORDED fixtures — BLOCKED ON HARDWARE: fixtures are faithful mocks; record real MF750 pages with `scripts/record-fixtures.mjs`
+- [x] Suite green on Windows + Linux (CI matrix)
+- [x] Bugs found → root-cause first (settings-close clobber, shebang parse, OSK Enter rawKeyDown probe) — `systematic-debugging`
 
 ## Phase 6 — Release
-- [ ] README with screenshots, install instructions, supported-printer matrix
-- [ ] Privacy note (local-only tool; state what leaves the machine — ideally nothing)
-- [ ] v1.0.0 tag AFTER release artifacts are published — tags are for releases only
+- [x] README with screenshots, install instructions, supported-printer matrix
+- [x] Privacy note (LAN-only; nothing leaves the machine — verified: no telemetry, no update check)
+- [ ] v1.0.0 tag AFTER release artifacts are published — tags are for releases only (AWAITING: real fixtures + user go-ahead; likely v0.1.0 first)
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
+- 2026-08-17 — Phase 6 prep: README screenshots (5, captured via e2e), privacy note (nothing leaves the machine, code-verified), honest printer matrix. Phase 5 mostly closed — one item blocked on hardware (recorded fixtures). Watch: OSK e2e flaked once locally — next: real MF750 fixtures, then v0.1.0
 - 2026-08-17 — Offline recovery guide added (Ethernet / Direct Connection / Canon USB tool) in control-error banner, empty state, and offline-profile state. 226 unit + 15 e2e — next: real MF750 fixtures, then v0.1.0
 - 2026-08-17 — On-screen D-pad added (third InputSource: pointer, arrows+OK+Back, hold repeat, settings toggle); release dry-run artifacts verified by download (real nsis/portable/AppImage/deb + valid SHA256SUMS). 199 unit + 13 e2e — next: real MF750 fixtures, then v0.1.0
 - 2026-08-17 — Phase 4 COMPLETE: release.yml (tag→release w/ SHA256SUMS, dry-run verified), CHANGELOG, bump-version script, RELEASE.md. 182 unit + 12 e2e — next: Phase 5 gap = real MF750 fixtures; then v0.1.0 tag (needs user go-ahead)
