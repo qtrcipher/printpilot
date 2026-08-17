@@ -1,7 +1,7 @@
 # PrintPilot
 
 ![CI](https://github.com/qtrcipher/printpilot/actions/workflows/ci.yml/badge.svg)
-`tests: 172 unit + 12 e2e passing`
+`tests: 226 unit + 15 e2e passing`
 
 PrintPilot is an open source desktop app (Windows + Linux) for operating a
 network printer's menu when its control panel is unusable — born from a Canon
@@ -10,6 +10,19 @@ imageCLASS MF750 with a dead touchscreen. It wraps the printer's built-in web
 task stays reachable without touching the panel.
 
 LAN-only. No accounts, no sync, no telemetry.
+
+## What it looks like
+
+| Home | Control view |
+| ---- | ------------ |
+| ![Home — no printers found, with the guided add-by-IP flow](docs/screenshots/home-empty.png) | ![Control view — embedded Remote UI with status strip, hint bar, and on-screen D-pad](docs/screenshots/control-view.png) |
+
+| On-screen keyboard + D-pad | Settings |
+| -------------------------- | -------- |
+| ![On-screen keyboard and D-pad over the printer's login page](docs/screenshots/control-dpad-osk.png) | ![Settings — theme, on-screen controls, gamepad remapping](docs/screenshots/settings.png) |
+
+(Screenshots are captured against the mock Canon fixtures by
+`npm run screenshots` — see `e2e/screenshots.spec.ts`.)
 
 ## Features
 
@@ -52,6 +65,7 @@ npm install
 npm run dev        # launch the app in dev mode
 npm test           # unit tests (Vitest)
 npm run test:e2e   # Playwright Electron smoke test (builds first)
+npm run screenshots # regenerate docs/screenshots/*.png (builds first)
 npm run typecheck
 ```
 
@@ -64,13 +78,29 @@ docker run --rm -v "$PWD":/app -w /app printpilot-build
 
 ## Supported printers
 
-| Vendor | Series | Status |
-| ------ | ------ | ------ |
-| Canon  | imageCLASS MF750 | Planned (dev device) |
+| Vendor | Series | Discovery | Control (Remote UI navigation) |
+| ------ | ------ | --------- | ------------------------------ |
+| Canon  | imageCLASS MF750 series (MF753Cdw / MF751Cdw) | mDNS + SNMP, tested | Targeted adapter (`canon-mf750`). **Fixtures are mocks awaiting hardware recording** — the layout is modeled on, not yet recorded from, the real Remote UI. |
+| Canon  | Other imageCLASS with the same Remote UI generation | mDNS + SNMP, tested | Likely works via the vendor/generic adapter fallback. **Unverified — help wanted.** |
+| Other vendors (HP, Brother, Epson, …) | Any with a web UI | Discovery works | Control falls back to the generic adapter (focus ring over all interactive elements). **Unverified — help wanted.** |
+
+**Help wanted: hardware reports.** If you run PrintPilot against a real
+printer — especially an MF750 — please report what worked and what didn't,
+or record real Remote UI fixtures (see `CONTRIBUTING.md` for the recorder).
 
 Per-model support ships as data (adapter manifests), so contributors can add
 models without touching core code. What's known about the Remote UI protocol:
 `docs/protocols/canon-remote-ui.md`.
+
+## Privacy
+
+PrintPilot talks only to printers on your local network. No accounts, no
+telemetry, no analytics, no crash upload. Printer credentials (Remote UI
+PINs) are encrypted by your OS keychain (Electron `safeStorage`) and never
+leave the device. The app itself makes no internet requests at all — there
+is not even an update check. Links you explicitly click (Canon support, the
+GitHub project) open in your own browser; everything else stays on the LAN.
+Details: `docs/decisions/no-telemetry.md`.
 
 ## Contributing
 
