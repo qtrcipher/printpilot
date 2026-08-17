@@ -175,6 +175,10 @@ describe('control view credential offer', () => {
     expect(el('#control-error').hidden).toBe(false);
     expect(el('#control-webview-host').hidden).toBe(true);
     expect(el('#control-error-message').textContent).toContain("didn't load");
+    // The offline recovery guide rides along with the error banner.
+    const guide = el('#control-error').querySelector('.recovery-guide');
+    expect(guide).not.toBeNull();
+    expect(guide!.querySelectorAll('ol > li')).toHaveLength(3);
   });
 
   it('renders key-cap hints and mirrors guest focus into the aria-live probe', async () => {

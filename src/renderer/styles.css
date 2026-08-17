@@ -766,3 +766,69 @@ select.input {
   border-color: var(--focus-ring);
   background: var(--primary);
 }
+
+/* --- Offline recovery guide --------------------------------------------- */
+
+.link {
+  font: inherit;
+  font-size: 14px;
+  color: var(--focus-ring);
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.state-panel .link {
+  display: inline-block;
+  margin-top: 12px;
+}
+
+#recovery-link-offline {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.recovery-guide {
+  margin-top: 16px;
+  padding: 16px 20px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+  max-width: 560px;
+}
+
+.recovery-guide__heading {
+  margin: 0 0 8px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.recovery-guide__list {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recovery-guide__title {
+  margin: 0;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.recovery-guide__line {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted-text);
+}
+
+.recovery-guide__link {
+  margin-top: 4px;
+  font-size: 13px;
+}

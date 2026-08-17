@@ -40,6 +40,9 @@
         <div id="list-state" hidden>
           <h2 class="list-heading" id="saved-heading" hidden>Saved printers</h2>
           <ul class="printer-list" id="saved-list" aria-label="Saved printers"></ul>
+          <button type="button" class="link" id="recovery-link-offline" hidden>
+            A saved printer isn't answering — recovery options
+          </button>
           <h2 class="list-heading" id="discovered-heading" hidden>Found on this network</h2>
           <ul class="printer-list" id="discovered-list" aria-label="Discovered printers"></ul>
         </div>
@@ -51,6 +54,9 @@
             Make sure the printer is powered on and connected to the same network, then rescan —
             or add it by IP address below.
           </p>
+          <button type="button" class="link" id="recovery-link-empty">
+            Printer known but off the network? Recovery options
+          </button>
         </div>
 
         <form class="manual-add" id="manual-add" novalidate hidden>
@@ -72,6 +78,10 @@
             Save as profile
           </button>
         </form>
+
+        <!-- Offline recovery guide (shared by the empty-state and
+             offline-profile affordances; toggled via wireRecoveryToggle). -->
+        <div id="recovery-guide-home" hidden></div>
 
       </section>
 

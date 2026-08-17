@@ -144,6 +144,14 @@ test('control view: error state for an unreachable printer, with Retry', async (
     // Retry stays on the error state while the port is dead (no crash).
     await page.locator('#control-retry').click();
     await expect(page.locator('#control-error')).toBeVisible();
+
+    // Offline recovery guide rides the error banner (deadlock case).
+    const guide = page.locator('#control-error .recovery-guide');
+    await expect(guide).toBeVisible();
+    await expect(guide.locator('.recovery-guide__list > li')).toHaveCount(3);
+    await expect(guide).toContainText('Ethernet cable');
+    await expect(guide).toContainText('previously enabled');
+    await expect(guide).toContainText("Canon's own");
   } finally {
     await app.close();
   }

@@ -12,6 +12,7 @@ import type { AppInfo, ConnectTargetInput, PrintPilotBridge, PublicProfile } fro
 import type { NavEvent } from '../preload/nav-layer';
 import { createControlView, type NavInputConfig } from './control';
 import { createOnboarding } from './onboarding';
+import { createRecoveryGuide, hasOfflineProfiles, wireRecoveryToggle } from './recovery';
 import { createSettingsView } from './settings';
 import './styles.css';
 
@@ -67,6 +68,20 @@ const ipFeedback = el('#ip-feedback');
 const saveManualButton = el<HTMLButtonElement>('#save-manual-button');
 const toast = el('#toast');
 const versionLabel = el('#version-label');
+const recoveryLinkEmpty = el<HTMLButtonElement>('#recovery-link-empty');
+const recoveryLinkOffline = el<HTMLButtonElement>('#recovery-link-offline');
+
+// Offline recovery guide (deadlock case: printer off the network with a dead
+// panel). One shared guide on Home, expanded from the empty state or the
+// saved-printers "not answering" affordance.
+const recoveryGuideHome = el('#recovery-guide-home');
+recoveryGuideHome.append(
+  createRecoveryGuide({
+    openExternal: (url) => void bridge?.openExternal(url),
+  }),
+);
+wireRecoveryToggle(recoveryLinkEmpty, recoveryGuideHome);
+wireRecoveryToggle(recoveryLinkOffline, recoveryGuideHome);
 
 type HomeState = 'loading' | 'error' | 'empty' | 'success';
 
@@ -308,6 +323,12 @@ function renderLists(): void {
     savedList.append(li);
   }
   savedHeading.hidden = savedProfiles.length === 0;
+  // Offline-profile affordance (grey dots): offer the recovery guide only
+  // when a saved printer is genuinely not seen on the network.
+  recoveryLinkOffline.hidden = !hasOfflineProfiles(
+    savedProfiles,
+    new Set([...discovered.keys()]),
+  );
 
   // Discovered-but-unsaved below, each with a Save action.
   const savedHosts = new Set(savedProfiles.map((p) => p.host));

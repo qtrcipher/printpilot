@@ -24,9 +24,12 @@ test('app launches, scan settles into the empty state, focus ring is visible', a
     await expect(page.locator('#manual-add')).toBeVisible();
 
     // Hard requirement: visible focus ring on interactive elements.
-    // Tab order = visual order: Settings gear → IP input → Check → Scan.
+    // Tab order = visual order: Settings gear → recovery link → IP input →
+    // Check → Scan.
     await page.keyboard.press('Tab');
     await expect(page.locator('#settings-button')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#recovery-link-empty')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.locator('#ip-input')).toBeFocused();
     await page.keyboard.press('Tab');
@@ -81,6 +84,35 @@ test('valid-format IP shows the unreachable classification with a fix hint', asy
     await expect(feedback).toContainText('powered on');
     // No profile-save offer for an unreachable host.
     await expect(page.locator('#save-manual-button')).toBeHidden();
+  } finally {
+    await app.close();
+  }
+});
+
+test('empty state: recovery link reveals the offline recovery guide', async () => {
+  const app = await launchApp();
+  const page = await firstPage(app);
+
+  try {
+    await expect(page.locator('#empty-state')).toBeVisible();
+    const guide = page.locator('#recovery-guide-home');
+    await expect(guide).toBeHidden();
+
+    const link = page.locator('#recovery-link-empty');
+    await expect(link).toHaveAttribute('aria-expanded', 'false');
+    await link.click();
+
+    await expect(guide).toBeVisible();
+    await expect(link).toHaveAttribute('aria-expanded', 'true');
+    await expect(guide.locator('.recovery-guide__list > li')).toHaveCount(3);
+    await expect(guide).toContainText('Ethernet cable');
+    await expect(guide).toContainText('previously enabled'); // honesty caveat
+    await expect(guide).toContainText("Canon's own");
+    await expect(guide.locator('.recovery-guide__link')).toHaveText('Open Canon support site');
+
+    // Toggles closed again (no dead-end UI).
+    await link.click();
+    await expect(guide).toBeHidden();
   } finally {
     await app.close();
   }

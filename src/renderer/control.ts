@@ -4,6 +4,7 @@ import type { ConnectResult, ConnectTargetInput, PrintPilotBridge } from '../pre
 import type { NavEvent } from '../preload/nav-layer';
 import { createDPad } from './dpad';
 import { createOsk } from './osk';
+import { createRecoveryGuide } from './recovery';
 
 /**
  * Control view (design doc §7): embeds the printer's Remote UI in a
@@ -92,6 +93,14 @@ export function createControlView(deps: ControlViewDeps): ControlView {
   const errorMessage = el('#control-error-message');
   const retryButton = el<HTMLButtonElement>('#control-retry');
   const openBrowserButton = el<HTMLButtonElement>('#control-open-browser');
+  // Offline recovery guide lives inside the error panel (deadlock case:
+  // printer off the network with a dead panel) — visible whenever the
+  // unreachable-printer banner is.
+  errorPanel.append(
+    createRecoveryGuide({
+      openExternal: (url) => void deps.getBridge()?.openExternal(url),
+    }),
+  );
   const webviewHost = el('#control-webview-host');
   const hintBar = el('#hint-bar');
   const focusProbe = el('#nav-focus-probe');
