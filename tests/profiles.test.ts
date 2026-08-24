@@ -50,6 +50,19 @@ describe('ProfileStore', () => {
     expect(await store.list()).toHaveLength(2);
   });
 
+  it('re-adding an existing host refreshes the profile instead of duplicating it', async () => {
+    const a = await store.add(sample);
+    await store.setCredential(a.id, 'hunter2');
+
+    const b = await store.add({ ...sample, nickname: 'Front desk', model: 'MF751Cdw' });
+    expect(b.id).toBe(a.id); // same profile, refreshed in place
+    const list = await store.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]?.nickname).toBe('Front desk');
+    expect(list[0]?.model).toBe('MF751Cdw');
+    expect(list[0]?.credentialEnc).toBe('enc:hunter2'); // credential survives
+  });
+
   it('renames a profile and reports unknown ids', async () => {
     const added = await store.add(sample);
     const renamed = await store.rename(added.id, 'Front desk');
@@ -79,13 +92,6 @@ describe('ProfileStore', () => {
     expect(onDisk).toContain('enc:hunter2');
     const parsed = JSON.parse(onDisk) as { printers: Array<{ credentialEnc?: string }> };
     expect(parsed.printers[0]?.credentialEnc).toBe('enc:hunter2');
-    // Round-trips back to the plaintext secret.
-    expect(await store.getCredential(added.id)).toBe('hunter2');
-  });
-
-  it('returns null for a profile without a credential', async () => {
-    const added = await store.add(sample);
-    expect(await store.getCredential(added.id)).toBeNull();
   });
 
   it('fails credential ops with a clear error when no cipher is available', async () => {

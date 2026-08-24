@@ -15,6 +15,28 @@ export type NavDecision =
   | { action: 'external'; url: string }
   | { action: 'deny'; reason: string };
 
+const DEFAULT_PORTS: Record<string, string> = { 'http:': '80', 'https:': '443' };
+
+/** url.port strips the scheme's default port — put it back for comparison. */
+function effectivePort(url: URL): string {
+  return url.port || DEFAULT_PORTS[url.protocol] || '';
+}
+
+/**
+ * printerHost is stored as "host:port" by control:connect (a bare "host"
+ * matches any port on that hostname). Compare hostname + effective port so
+ * a printer on the default port matches both `http://h/` and `http://h:80/`
+ * — `new URL().host` drops default ports, which used to break the allowlist
+ * for the most common printer config (port 80).
+ */
+function printerHostMatches(url: URL, printerHost: string): boolean {
+  const sep = printerHost.lastIndexOf(':');
+  const host = sep === -1 ? printerHost : printerHost.slice(0, sep);
+  const port = sep === -1 ? '' : printerHost.slice(sep + 1);
+  if (url.hostname !== host) return false;
+  return port === '' || effectivePort(url) === port;
+}
+
 /**
  * Where may the webview guest navigate?
  * - http(s) on the printer's own host[:port] → allow (Remote UI pages).
@@ -31,7 +53,7 @@ export function decideNavigation(targetUrl: string, printerHost: string | null):
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return { action: 'deny', reason: `protocol ${parsed.protocol} is not allowed` };
   }
-  if (printerHost && parsed.host === printerHost) return { action: 'allow' };
+  if (printerHost && printerHostMatches(parsed, printerHost)) return { action: 'allow' };
   return { action: 'external', url: parsed.href };
 }
 

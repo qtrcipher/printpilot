@@ -20,7 +20,7 @@ fixtures (to replace the hand-built mocks) are the next milestone.
 - **Control view** — embeds the printer's Remote UI with a status strip,
   error recovery (never a raw error page), and an open-in-browser fallback.
 - **Navigation layer** — full keyboard control (arrows/Tab, Enter, Esc,
-  `Ctrl+``) and gamepad control (D-pad/stick, A/B) with press-to-assign
+  ``Ctrl+` ``) and gamepad control (D-pad/stick, A/B) with press-to-assign
   remapping in Settings.
 - **On-screen D-pad** — pointer-driven arrows + OK + Back overlay with
   hold-to-repeat, for driving menus with a mouse or touchscreen.

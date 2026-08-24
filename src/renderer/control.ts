@@ -311,6 +311,9 @@ export function createControlView(deps: ControlViewDeps): ControlView {
         textFocus = active;
         oskSuppressed = false;
         if (!active) oskManual = false;
+        // Focus context changed — drop any mirrored value from the previous
+        // field so a secret can never linger in the probe (audit 2026-08-24).
+        oskTextProbe.textContent = '';
         updateOskVisibility();
       } else if (event.channel === 'nav:text-value') {
         const [{ value }] = event.args as [{ value: string }];
@@ -384,14 +387,17 @@ export function createControlView(deps: ControlViewDeps): ControlView {
     updatePadVisibility();
     textFocus = false;
     oskManual = false;
+    oskTextProbe.textContent = ''; // never keep a mirrored field value after disconnect
     updateOskVisibility();
     deps.onExit();
   }
 
   backButton.addEventListener('click', close);
   retryButton.addEventListener('click', () => {
-    show('loading');
-    webview?.reload();
+    // Full re-connect, not a bare webview reload — the first attempt may have
+    // thrown before the webview existed, stranding the UI on the splash
+    // (docs/audit-2026-08-24.md).
+    if (target) void connect(target);
   });
   openBrowserButton.addEventListener('click', () => {
     if (connection) void deps.getBridge()?.openExternal(connection.url);

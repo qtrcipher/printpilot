@@ -38,7 +38,7 @@ export interface SettingsView {
   readonly active: boolean;
 }
 
-const GITHUB_URL = 'https://github.com/printpilot/printpilot';
+const GITHUB_URL = 'https://github.com/qtrcipher/printpilot';
 
 const ACTION_LABELS: Record<GamepadAction, string> = {
   up: 'Move up',

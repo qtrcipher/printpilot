@@ -38,7 +38,8 @@ export interface InputSource {
   readonly kind: 'keyboard' | 'gamepad' | 'synthetic';
   start(): void;
   stop(): void;
-  onEvent(handler: NavEventHandler): void;
+  /** Returns an unsubscribe function that removes the handler. */
+  onEvent(handler: NavEventHandler): () => void;
 }
 
 /** Default keyboard mapping (design doc §3). Pure for testability. */
@@ -130,8 +131,11 @@ export class SyntheticInputSource implements InputSource {
     this.running = false;
   }
 
-  onEvent(handler: NavEventHandler): void {
+  onEvent(handler: NavEventHandler): () => void {
     this.handlers.push(handler);
+    return () => {
+      this.handlers = this.handlers.filter((h) => h !== handler);
+    };
   }
 
   /** Events are dropped while stopped, mirroring real source behavior. */
@@ -148,22 +152,30 @@ export class SyntheticInputSource implements InputSource {
 export class NavEventBus implements InputSource {
   readonly kind = 'synthetic' as const;
   private handlers: NavEventHandler[] = [];
+  private unsubscribes: Array<() => void> = [];
 
   constructor(private readonly sources: InputSource[]) {}
 
   start(): void {
     for (const source of this.sources) {
-      source.onEvent((event) => this.dispatch(event));
+      // Keep the unsubscribe so stop() detaches for real — re-subscribing on
+      // every start would accumulate handlers and double-dispatch.
+      this.unsubscribes.push(source.onEvent((event) => this.dispatch(event)));
       source.start();
     }
   }
 
   stop(): void {
     for (const source of this.sources) source.stop();
+    for (const unsubscribe of this.unsubscribes) unsubscribe();
+    this.unsubscribes = [];
   }
 
-  onEvent(handler: NavEventHandler): void {
+  onEvent(handler: NavEventHandler): () => void {
     this.handlers.push(handler);
+    return () => {
+      this.handlers = this.handlers.filter((h) => h !== handler);
+    };
   }
 
   private dispatch(event: NavEvent): void {
@@ -222,8 +234,11 @@ export class KeyboardInputSource implements InputSource {
     this.target.removeEventListener('keydown', this.listener, true);
   }
 
-  onEvent(handler: NavEventHandler): void {
+  onEvent(handler: NavEventHandler): () => void {
     this.handlers.push(handler);
+    return () => {
+      this.handlers = this.handlers.filter((h) => h !== handler);
+    };
   }
 
   private onKeydown(event: KeyboardEvent): void {
@@ -385,8 +400,11 @@ export class GamepadInputSource implements InputSource {
     this.backHeld = false;
   }
 
-  onEvent(handler: NavEventHandler): void {
+  onEvent(handler: NavEventHandler): () => void {
     this.handlers.push(handler);
+    return () => {
+      this.handlers = this.handlers.filter((h) => h !== handler);
+    };
   }
 
   private pump(): void {

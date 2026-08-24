@@ -7,6 +7,9 @@
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -24,7 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "22.20.1",
-    "electron": "43.4.0",
+    "electron": "43.4.1",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "jsdom": "^30.0.1",
@@ -32,11 +35,6 @@
     "sharp": "0.35.3",
     "typescript": "5.9.3",
     "vite": "7.3.6",
-    "vitest": "4.1.10"
-  },
-  "allowScripts": {
-    "esbuild@0.25.12": true,
-    "esbuild@0.28.2": true,
-    "electron-winstaller": false
+    "vitest": "4.1.11"
   }
 }

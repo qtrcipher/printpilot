@@ -19,4 +19,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Repo is bind-mounted at /app; install, verify, then package Linux targets.
-CMD ["sh", "-c", "npm ci && npm run typecheck && npm test && xvfb-run -a npm run test:e2e && npm run build && npx electron-builder --linux"]
+CMD ["sh", "-c", "npm ci && npm run typecheck && npm test && xvfb-run -a npm run test:e2e && npm run build && npx electron-builder --linux --publish never"]

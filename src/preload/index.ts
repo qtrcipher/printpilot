@@ -23,6 +23,8 @@ export interface AppInfo {
   logFilePath: string;
   /** Previous run ended in a crash; show the recovery notice once. */
   recoveredFromCrash: boolean;
+  /** A corrupt config file was quarantined + reset; shown once, like the crash notice. */
+  corruptConfigNotice: string | null;
 }
 
 /** Profile as the renderer sees it — the credential blob never crosses over. */
@@ -62,7 +64,6 @@ export interface PrintPilotBridge {
   getAppInfo(): Promise<AppInfo>;
 
   startDiscovery(): Promise<void>;
-  stopDiscovery(): Promise<void>;
   /** Returns an unsubscribe function. */
   onPrinterFound(cb: (printer: DiscoveredPrinter) => void): () => void;
   onDiscoveryError(cb: (message: string) => void): () => void;
@@ -73,7 +74,6 @@ export interface PrintPilotBridge {
   removeProfile(id: string): Promise<boolean>;
   renameProfile(id: string, nickname: string): Promise<PublicProfile | null>;
   setProfileCredential(id: string, secret: string): Promise<void>;
-  getProfileCredential(id: string): Promise<string | null>;
 
   connectPrinter(target: ConnectTargetInput): Promise<ConnectResult>;
   openExternal(url: string): Promise<void>;
@@ -106,7 +106,6 @@ const bridge: PrintPilotBridge = {
   getAppInfo: () => ipcRenderer.invoke('app:info') as Promise<AppInfo>,
 
   startDiscovery: () => ipcRenderer.invoke('discovery:start') as Promise<void>,
-  stopDiscovery: () => ipcRenderer.invoke('discovery:stop') as Promise<void>,
   onPrinterFound: (cb) => subscribe('discovery:printer-found', cb),
   onDiscoveryError: (cb) => subscribe('discovery:error', cb),
   checkManualHost: (ip) => ipcRenderer.invoke('discovery:check-manual', ip) as Promise<ManualCheckResult>,
@@ -118,8 +117,6 @@ const bridge: PrintPilotBridge = {
     ipcRenderer.invoke('profiles:rename', id, nickname) as Promise<PublicProfile | null>,
   setProfileCredential: (id, secret) =>
     ipcRenderer.invoke('profiles:set-credential', id, secret) as Promise<void>,
-  getProfileCredential: (id) =>
-    ipcRenderer.invoke('profiles:get-credential', id) as Promise<string | null>,
 
   connectPrinter: (target) => ipcRenderer.invoke('control:connect', target) as Promise<ConnectResult>,
   openExternal: (url) => ipcRenderer.invoke('control:open-external', url) as Promise<void>,

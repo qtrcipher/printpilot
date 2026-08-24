@@ -4,10 +4,12 @@ import { firstPage, launchApp } from './launch';
 
 /**
  * On-screen-keyboard e2e (house rule: no physical printer). The mock Canon
- * login fixture has a password field: focusing it in the guest must summon
- * the keyboard, keys must land text in the field (asserted via the shell's
- * text mirror probe), Backspace/Enter act as keys, and the settings toggle
- * is respected. Fixture served from 127.0.0.1:8932 (8931 is control.spec's).
+ * login fixture has a text field (System Manager ID) and a password field:
+ * focusing a text-entry field in the guest must summon the keyboard, keys
+ * must land text in the field (asserted via the shell's text mirror probe),
+ * Backspace/Enter act as keys, the settings toggle is respected — and a
+ * password field's value must NEVER appear in the mirror (audit 2026-08-24).
+ * Fixture served from 127.0.0.1:8932 (8931 is control.spec's).
  */
 
 const FIXTURE_PORT = 8932;
@@ -52,11 +54,12 @@ test('on-screen keyboard: auto-show on text focus, typing, backspace, dismiss, s
     await page.keyboard.press('Enter');
     await expect(page.locator('#control-page')).toHaveText('Remote UI');
 
-    // Focus ring lands on the password field → keyboard auto-appears.
+    // Focus ring lands on the first text field (System Manager ID) →
+    // keyboard auto-appears.
     await expect(osk).toBeVisible();
     await expect(page.locator('#osk-status')).toHaveText('On-screen keyboard shown.');
 
-    // Clicking keys inserts text into the guest's focused password field.
+    // Clicking keys inserts text into the guest's focused text field.
     const textProbe = page.locator('#osk-text-probe');
     await page.locator('#osk [data-text="1"]').click();
     await page.locator('#osk [data-text="2"]').click();
@@ -74,6 +77,21 @@ test('on-screen keyboard: auto-show on text focus, typing, backspace, dismiss, s
     // Backspace deletes the last character.
     await page.locator('#osk-backspace').click();
     await expect(textProbe).toHaveText('123A');
+
+    // Tab inside a text field keeps its native form behavior → focus moves
+    // to the password field. The keyboard stays up (PINs need it) but the
+    // field's value is never mirrored into the shell.
+    await page.keyboard.press('Tab');
+    await expect(osk).toBeVisible();
+    await page.locator('#osk [data-text="9"]').click();
+    const pinValue = await page.evaluate(() => {
+      const guest = document.querySelector('webview') as unknown as {
+        executeJavaScript(code: string): Promise<unknown>;
+      };
+      return guest.executeJavaScript('document.getElementById("password").value');
+    });
+    expect(pinValue).toBe('9'); // typed into the guest…
+    await expect(textProbe).toHaveText(''); // …but never mirrored
 
     // Dismiss hides; the chrome toggle brings it back.
     await page.locator('#osk-dismiss').click();

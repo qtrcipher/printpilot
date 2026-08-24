@@ -1,4 +1,4 @@
-appId: io.github.printpilot.printpilot
+appId: io.github.qtrcipher.printpilot
 productName: PrintPilot
 copyright: Copyright © 2026 PrintPilot contributors
 
@@ -11,7 +11,8 @@ files:
   - adapters/** # adapter manifests are data files read at runtime (design doc §4)
   - package.json
 
-# No publish config: releases are manual until Phase 4.
+# No publish config: packaging always runs with --publish never (RELEASE.md);
+# releases are built by the tag-triggered workflow (.github/workflows/release.yml).
 
 win:
   icon: build/icon.png

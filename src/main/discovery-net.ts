@@ -17,11 +17,15 @@ const MDNS_TYPES = ['ipp', 'http', 'pdl-datastream'] as const;
 /** SNMP sysDescr — the standard "what are you" OID. */
 const SYS_DESCR_OID = '1.3.6.1.2.1.1.1.0';
 
-export function createMdnsBrowser(): MdnsBrowser {
-  const bonjour = new Bonjour();
+export function createMdnsBrowser(createBonjour: () => Bonjour = () => new Bonjour()): MdnsBrowser {
+  // bonjour.destroy() kills the responder socket permanently, so a stopped
+  // instance can never browse again — construct a fresh one per start()
+  // (every discovery:start stops the previous scan first).
+  let bonjour: Bonjour | null = null;
   let browsers: Bonjour.Browser[] = [];
   return {
     start(onUp, onError) {
+      bonjour ??= createBonjour();
       for (const type of MDNS_TYPES) {
         try {
           const browser = bonjour.find({ type }, (service) => {
@@ -42,7 +46,8 @@ export function createMdnsBrowser(): MdnsBrowser {
     stop() {
       for (const browser of browsers) browser.stop();
       browsers = [];
-      bonjour.destroy();
+      bonjour?.destroy();
+      bonjour = null;
     },
   };
 }

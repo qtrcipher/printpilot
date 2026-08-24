@@ -94,6 +94,19 @@ describe('NavEventBus', () => {
     source.emit({ type: 'activate' });
     expect(events).toEqual([]);
   });
+
+  it('detaches source handlers on stop — no double dispatch after start → stop → start', () => {
+    const source = new SyntheticInputSource();
+    const bus = new NavEventBus([source]);
+    const events: NavEvent[] = [];
+    bus.onEvent((e) => events.push(e));
+
+    bus.start();
+    bus.stop();
+    bus.start();
+    source.emit({ type: 'activate' });
+    expect(events).toEqual([{ type: 'activate' }]); // exactly once
+  });
 });
 
 describe('sanitizeNavEvent', () => {

@@ -11,6 +11,26 @@ describe('decideNavigation', () => {
     });
   });
 
+  it('matches printers on default ports — new URL().host strips them', () => {
+    // The stored allowlist entry is always host:port (control:connect), but
+    // http://host/ has no explicit port — both sides must normalize.
+    expect(decideNavigation('http://192.168.1.50/menu.html', '192.168.1.50:80')).toEqual({
+      action: 'allow',
+    });
+    expect(decideNavigation('https://printer.local/login', 'printer.local:443')).toEqual({
+      action: 'allow',
+    });
+    // …and an explicit default port in the URL still matches.
+    expect(decideNavigation('http://192.168.1.50:80/menu.html', '192.168.1.50:80')).toEqual({
+      action: 'allow',
+    });
+    expect(decideNavigation('https://printer.local:443/login', 'printer.local:443')).toEqual({
+      action: 'allow',
+    });
+    // Default port on the wrong scheme is not the printer.
+    expect(decideNavigation('http://192.168.1.50/x', '192.168.1.50:443').action).toBe('external');
+  });
+
   it('routes other http(s) URLs to the system browser', () => {
     expect(decideNavigation('https://example.com/track', '192.168.1.50:8931')).toEqual({
       action: 'external',

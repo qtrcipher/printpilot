@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   ConfigFileError,
   loadVersionedJson,
+  quarantineCorruptFile,
   resolveConfigDir,
   runMigrations,
   saveVersionedJson,
@@ -119,6 +120,23 @@ describe('versioned JSON load/save', () => {
   it('throws on corrupt JSON instead of silently resetting', async () => {
     await writeFile(profilesPath(dir), '{not json');
     await expect(loadProfiles(dir)).rejects.toThrow(ConfigFileError);
+  });
+
+  it('quarantine moves a corrupt file aside so loads fall back to defaults', async () => {
+    await writeFile(settingsPath(dir), '{not json');
+    await expect(loadSettings(dir)).rejects.toThrow(ConfigFileError);
+
+    const moved = await quarantineCorruptFile(settingsPath(dir));
+    expect(moved).toMatch(/settings\.json\.corrupt-/);
+    expect(await readFile(moved as string, 'utf8')).toBe('{not json'); // kept, not deleted
+
+    // Booting again now yields defaults instead of the brick.
+    const settings = await loadSettings(dir);
+    expect(settings).toEqual({ ...defaultSettings(), version: SETTINGS_VERSION });
+  });
+
+  it('quarantine returns null when there is no file to move', async () => {
+    expect(await quarantineCorruptFile(settingsPath(dir))).toBeNull();
   });
 
   it('throws on a file written by a newer app version', async () => {

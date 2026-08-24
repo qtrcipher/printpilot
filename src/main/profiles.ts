@@ -90,6 +90,15 @@ export class ProfileStore {
 
   async add(input: NewProfile): Promise<PrinterProfile> {
     const file = await loadProfiles(this.configDir);
+    // One profile per host: re-adding an existing host refreshes it instead
+    // of duplicating (docs/audit-2026-08-24.md). The id and any saved
+    // credential survive the refresh.
+    const existing = file.printers.find((p) => p.host === input.host);
+    if (existing) {
+      Object.assign(existing, input);
+      await saveProfiles(this.configDir, file);
+      return existing;
+    }
     const profile: PrinterProfile = { id: randomUUID(), ...input };
     file.printers.push(profile);
     await saveProfiles(this.configDir, file);
@@ -122,12 +131,6 @@ export class ProfileStore {
       p.credentialEnc = cipher.encrypt(plain);
     });
     if (!updated) throw new CredentialError(`No profile with id ${id}`);
-  }
-
-  async getCredential(id: string): Promise<string | null> {
-    const profile = (await this.list()).find((p) => p.id === id);
-    if (!profile?.credentialEnc) return null;
-    return this.requireCipher().decrypt(profile.credentialEnc);
   }
 
   private requireCipher(): CredentialCipher {

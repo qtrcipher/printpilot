@@ -501,6 +501,11 @@ async function init(): Promise<void> {
   if (appInfo.recoveredFromCrash) {
     showToast('PrintPilot recovered from a crash last time. Copy diagnostics in Settings has the details.');
   }
+  // Corrupt-config notice (settings/profiles were quarantined + reset to
+  // defaults; likewise consumed once in main).
+  if (appInfo.corruptConfigNotice) {
+    showToast(appInfo.corruptConfigNotice);
+  }
   bridge.onPrinterFound(onPrinterFound);
   bridge.onDiscoveryError(showError);
   if (!settings.onboardingSeen) {

@@ -42,6 +42,24 @@ export function resolveConfigDir(env: ResolveEnv): string {
 export class ConfigFileError extends Error {}
 
 /**
+ * Move an unreadable config file aside (`<file>.corrupt-<timestamp>`) so the
+ * app can boot with defaults instead of crashing (docs/audit-2026-08-24.md —
+ * a corrupt settings.json used to leave the app windowless). Returns the
+ * quarantine path, or null when there was nothing to move.
+ */
+export async function quarantineCorruptFile(filePath: string): Promise<string | null> {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const target = `${filePath}.corrupt-${stamp}`;
+  try {
+    await fs.rename(filePath, target);
+    return target;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/**
  * Upgrade `data` (currently at `fromVersion`) to `toVersion` by applying the
  * migration chain. Throws when the file is newer than the app understands or
  * a chain link is missing.

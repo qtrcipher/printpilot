@@ -159,6 +159,26 @@ describe('control view credential offer', () => {
     expect(document.querySelector('webview')).not.toBeNull();
   });
 
+  it('retry re-runs the full connect when the first attempt threw before any webview', async () => {
+    const bridge = fakeBridge();
+    bridge.connectPrinter.mockRejectedValueOnce(new Error('adapter manifest unreadable'));
+    const view = createControlView({
+      getBridge: () => bridge,
+      showToast: vi.fn(),
+      onExit: vi.fn(),
+    });
+    await view.connect({ nickname: 'Office MF750', host: '192.168.1.50' });
+    // Connect threw → error banner, and no webview was ever created.
+    expect(el('#control-error').hidden).toBe(false);
+    expect(el('#control-error-message').textContent).toContain('adapter manifest unreadable');
+    expect(document.querySelector('webview')).toBeNull();
+
+    el<HTMLButtonElement>('#control-retry').click();
+    await vi.waitFor(() => expect(document.querySelector('webview')).not.toBeNull());
+    expect(bridge.connectPrinter).toHaveBeenCalledTimes(2);
+    expect(el('#control-error').hidden).toBe(true);
+  });
+
   it('shows an error state with retry when the guest fails to load', async () => {
     const bridge = fakeBridge();
     const view = createControlView({

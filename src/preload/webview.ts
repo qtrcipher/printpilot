@@ -67,11 +67,15 @@ function startNavLayer(config: NavConfig): void {
   });
   // Value mirror while a text field is focused (drives the shell-side probe;
   // same trust domain as the credential-offer PIN flow). Truncated.
+  // Password fields are excluded (docs/audit-2026-08-24.md): they still get
+  // focus reports so the OSK opens for PINs, but their value is never
+  // mirrored into the shell DOM.
   document.addEventListener(
     'input',
     (event) => {
       if (!isTextEntryElement(event.target)) return;
       const el = event.target as HTMLElement;
+      if (el instanceof HTMLInputElement && el.type === 'password') return;
       const value =
         el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
           ? el.value
@@ -142,19 +146,6 @@ ipcRenderer.on('nav:config', (_event, config: NavConfig) => {
   if (bus) return; // already configured (config is sent once per connection)
   startNavLayer(config);
 });
-
-// Tell the shell whether the loaded page still looks like the login page, so
-// the credential offer only fires after a *successful* login (navigation
-// away from the login URL).
-function reportPageKind(): void {
-  if (!adapter) return;
-  const hasPasswordForm = Boolean(
-    document.querySelector(adapter.login.passwordSelector)?.closest(adapter.login.formSelector),
-  );
-  ipcRenderer.sendToHost('nav:page-kind', { login: hasPasswordForm });
-}
-
-window.addEventListener('DOMContentLoaded', reportPageKind);
 
 // Forward page errors to the shell → main's rotating log (design doc §5).
 // The shell relays these over the typed log:write IPC (rate-limited there).

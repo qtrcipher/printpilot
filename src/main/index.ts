@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadAdapterManifests } from './adapters-load';
 import { resolveAdapter, type AdapterManifest } from './adapters';
-import { resolveConfigDir } from './config-dir';
+import { quarantineCorruptFile, resolveConfigDir } from './config-dir';
 import { consumeCrashFlag, formatCrashEntry, markCrash, type CrashDetails, type CrashKind } from './crash';
 import { createSafeStorageCipher } from './credentials';
 import { buildDiagnostics } from './diagnostics';
@@ -17,9 +17,9 @@ import {
 } from './discovery';
 import { createDiscoveryService } from './discovery-net';
 import { createLogger, type Logger, type LogLevel } from './logger';
-import { loadProfiles, ProfileStore, type NewProfile, type PrinterProfile } from './profiles';
+import { loadProfiles, ProfileStore, profilesPath, type NewProfile, type PrinterProfile, type ProfilesFile } from './profiles';
 import { decideNavigation, permissionDecision } from './security';
-import { loadSettings, saveSettings, updateSettings, validateSettingsPatch } from './settings';
+import { loadSettings, saveSettings, settingsPath, updateSettings, validateSettingsPatch, type SettingsFile } from './settings';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -69,6 +69,45 @@ function logger(): Logger {
 // webview guest may navigate within (docs/security-audit-2026-08-17.md).
 let allowedPrinterHost: string | null = null;
 
+/**
+ * A corrupt config file must never brick the app (docs/audit-2026-08-24.md —
+ * an unreadable settings.json used to leave the app windowless forever). The
+ * file is renamed aside and the app boots with defaults; this one-shot notice
+ * is consumed by the app:info handler so the shell can say what happened —
+ * same pattern as the crash-recovery notice.
+ */
+let corruptConfigNotice: string | null = null;
+
+async function quarantineConfig(filePath: string, label: string, err: unknown): Promise<void> {
+  const moved = await quarantineCorruptFile(filePath).catch(() => null);
+  logger().warn('config', `${label} unreadable — reset to defaults`, {
+    err: err instanceof Error ? err : new Error(String(err)),
+    quarantinedTo: moved ?? undefined,
+  });
+  corruptConfigNotice = moved
+    ? `Your saved ${label} were corrupted, so PrintPilot reset them to defaults. ` +
+      `The old file was kept as ${path.basename(moved)}.`
+    : `Your saved ${label} were corrupted, so PrintPilot reset them to defaults.`;
+}
+
+async function loadSettingsSafe(): Promise<SettingsFile> {
+  try {
+    return await loadSettings(configDir);
+  } catch (err) {
+    await quarantineConfig(settingsPath(configDir), 'settings', err);
+    return loadSettings(configDir); // file quarantined → defaults
+  }
+}
+
+async function loadProfilesSafe(): Promise<ProfilesFile> {
+  try {
+    return await loadProfiles(configDir);
+  } catch (err) {
+    await quarantineConfig(profilesPath(configDir), 'printer profiles', err);
+    return loadProfiles(configDir);
+  }
+}
+
 // Adapter manifests are data files shipped in the bundle (design doc §4);
 // app.getAppPath() is the project root in dev/e2e and the asar root when
 // packaged (adapters/** is included in electron-builder.yml files).
@@ -114,7 +153,7 @@ async function diagnosticsText(): Promise<string> {
 }
 
 async function createWindow(): Promise<void> {
-  const settings = await loadSettings(configDir);
+  const settings = await loadSettingsSafe();
   const { width, height, maximized } = settings.window;
 
   const win = new BrowserWindow({
@@ -195,10 +234,13 @@ const logWriteTimestamps = new Map<number, number[]>();
 
 function registerIpc(): void {
   handle('app:info', async () => {
-    const profiles = await loadProfiles(configDir);
-    const settings = await loadSettings(configDir);
+    const profiles = await loadProfilesSafe();
+    const settings = await loadSettingsSafe();
     // Consumed here so the recovery notice is shown exactly once.
     const crash = consumeCrashFlag(loggerDir());
+    // Same once-only consumption for the corrupt-config notice.
+    const notice = corruptConfigNotice;
+    corruptConfigNotice = null;
     return {
       version: app.getVersion(),
       platform: process.platform,
@@ -208,6 +250,7 @@ function registerIpc(): void {
       debugMenu: debugMenuEnabled(),
       logFilePath: logger().filePath,
       recoveredFromCrash: crash !== null,
+      corruptConfigNotice: notice,
     };
   });
 
@@ -262,15 +305,15 @@ function registerIpc(): void {
   });
 
   // --- Discovery (design doc §3) -------------------------------------------
+  // The scan is effectively app-lifetime: discovery:start stops and clears
+  // the previous scan before starting a new one, and discovery.stop() runs
+  // on will-quit. There is deliberately no discovery:stop channel (removed
+  // as dead IPC surface, docs/audit-2026-08-24.md).
   handle('discovery:start', () => {
     logger().info('discovery', 'scan started');
     discovery.stop();
     discovery.clear();
     discovery.start();
-  });
-  handle('discovery:stop', () => {
-    logger().info('discovery', 'scan stopped');
-    discovery.stop();
   });
   handle('discovery:check-manual', (_event, ip: unknown) => {
     const host = assertString(ip, 'ip', 64);
@@ -279,7 +322,7 @@ function registerIpc(): void {
   });
 
   // --- Profiles (design doc §4). Secrets are never logged — ids/names only. --
-  handle('profiles:list', async () => (await profileStore.list()).map(stripCredential));
+  handle('profiles:list', async () => (await loadProfilesSafe()).printers.map(stripCredential));
   handle('profiles:add', async (_event, input: unknown) => {
     const profile = stripCredential(await profileStore.add(validateNewProfile(input)));
     logger().info('profiles', 'profile added', { id: profile?.id, nickname: profile?.nickname });
@@ -303,9 +346,6 @@ function registerIpc(): void {
     await profileStore.setCredential(profileId, value);
     logger().info('profiles', 'credential saved', { id: profileId });
   });
-  handle('profiles:get-credential', (_event, id: unknown) =>
-    profileStore.getCredential(assertString(id, 'id', 64)),
-  );
 
   // --- Control view (design doc §3: embedded Remote UI) ---------------------
   handle('control:connect', async (_event, input: unknown) => {

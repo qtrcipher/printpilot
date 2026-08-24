@@ -1,3 +1,5 @@
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { expect, test, type ElectronApplication } from 'playwright/test';
 import { startFixtureServer, type FixtureServer } from '../tests/fixtures/server';
 import { firstPage, launchApp, makeConfigDir } from './launch';
@@ -42,6 +44,32 @@ test('crash recovery: notice shown once after a crash, then never again', async 
   }
 
   // Second launch, same dirs, no simulator: the flag was consumed — no notice.
+  const app2 = await launchApp({}, configDir);
+  const page2 = await firstPage(app2);
+  try {
+    await expect(page2.locator('#scan-button')).toBeEnabled();
+    await expect(page2.locator('#toast')).toBeHidden();
+  } finally {
+    await app2.close();
+  }
+});
+
+test('corrupt settings.json: app still boots, file quarantined, notice shown once', async () => {
+  const configDir = await makeConfigDir();
+  await writeFile(path.join(configDir, 'settings.json'), '{ not json');
+
+  const app1 = await launchApp({}, configDir);
+  const page1 = await firstPage(app1);
+  try {
+    // Bricked = no window at all; the toast proves the shell booted.
+    await expect(page1.locator('#toast')).toBeVisible();
+    await expect(page1.locator('#toast')).toContainText('reset');
+  } finally {
+    await app1.close();
+  }
+
+  // Second launch: the quarantined file is gone from the load path and the
+  // notice was consumed — clean boot, no toast.
   const app2 = await launchApp({}, configDir);
   const page2 = await firstPage(app2);
   try {

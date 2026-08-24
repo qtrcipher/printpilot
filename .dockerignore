@@ -7,6 +7,9 @@ dist
 .env*
 .github
 docs
+test-results
+playwright-report
+.DS_Store
 PROGRESS.md
 AGENTS.md
 Dockerfile

@@ -1,7 +1,7 @@
 # PrintPilot
 
 ![CI](https://github.com/qtrcipher/printpilot/actions/workflows/ci.yml/badge.svg)
-`tests: 226 unit + 15 e2e passing`
+`tests: 232 unit + 16 e2e passing`
 
 PrintPilot is an open source desktop app (Windows + Linux) for operating a
 network printer's menu when its control panel is unusable — born from a Canon
@@ -31,7 +31,7 @@ LAN-only. No accounts, no sync, no telemetry.
 - **Control view** — embeds the printer's Remote UI with a status strip,
   error recovery (never a raw error page), and an open-in-browser fallback.
 - **Keyboard navigation** — full panel control: arrows/Tab to move, Enter to
-  select, Esc for back, `Ctrl+`` to cross between the app and the page.
+  select, Esc for back, ``Ctrl+` `` to cross between the app and the page.
 - **Gamepad navigation** — D-pad/stick to move, A to select, B for back,
   with press-to-assign remapping in Settings.
 - **Profiles** — multiple printers saved locally; Remote UI PINs stored in
@@ -42,9 +42,10 @@ LAN-only. No accounts, no sync, no telemetry.
 
 ## Status
 
-Phases 0–3 complete (design, foundation, discovery/control, hardening). The
-app is functional against mock Canon fixtures; real-device fixture recordings
-are the next milestone — see `PROGRESS.md`.
+[v0.1.0](https://github.com/qtrcipher/printpilot/releases/tag/v0.1.0) is
+released and verified against a real Canon MF750 on-device. The test fixtures
+are still hand-built mocks modeled on that device — recorded-device fixtures
+are the next milestone. See `PROGRESS.md` for the roadmap.
 
 ## Install
 
