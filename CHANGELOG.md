@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-24
+
+### Fixed
+
+- In-app navigation could be misrouted to the system browser on printers
+  using default HTTP/HTTPS ports (allowlist port normalization).
+- Rescanning for printers found nothing after the first scan (the mDNS
+  socket was destroyed on stop but reused on start).
+- A corrupt `settings.json`/`profiles.json` prevented the app from opening;
+  the file is now quarantined and the app boots with defaults plus a notice.
+- Retry in the control view no longer strands the UI on the loading splash
+  when the connection itself fails.
+- On-screen keyboard no longer mirrors password-field contents into the
+  shell, and clears its state on disconnect.
+- Adding a profile for an already-saved host refreshes it instead of
+  creating a duplicate.
+- Broken GitHub link in Settings → About; stale README status section.
+
+### Security
+
+- Removed an unused IPC channel that could return decrypted PINs to the
+  renderer (`profiles:get-credential`); full audit in
+  `docs/audit-2026-08-24.md`.
+
+### Changed
+
+- **App identity (`appId`) is now `io.github.qtrcipher.printpilot`** —
+  v0.1.0 installs will not auto-replace; uninstall v0.1.0 first if you have
+  it. Changed now deliberately, before the user base grows.
+- Electron 43.4.0 → 43.4.1, Vitest 4.1.10 → 4.1.11.
+
 ## [0.1.0] - 2026-08-17
 
 First public release — born from a Canon imageCLASS MF750 with a dead
@@ -50,5 +81,6 @@ fixtures (to replace the hand-built mocks) are the next milestone.
   on the device. Audit: `docs/security-audit-2026-08-17.md` (13 fixed,
   4 accepted).
 
-[Unreleased]: https://github.com/qtrcipher/printpilot/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/qtrcipher/printpilot/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/qtrcipher/printpilot/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/qtrcipher/printpilot/releases/tag/v0.1.0
