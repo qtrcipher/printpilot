@@ -60,6 +60,7 @@
 
 ## Session log
 Format, newest first, one line per session: `YYYY-MM-DD — what changed — next: <task>`
+- 2026-08-24 — Full audit (docs/audit-2026-08-24.md) + fix pass: all 5 majors (port-80 nav allowlist, mDNS rescan, corrupt-config brick, dead credential channel, OSK password mirror) + 15 minors fixed; appId changed to qtrcipher (breaks v0.1.0 upgrade identity — accepted, pre-user-base). 232 unit + 16 e2e green locally — next: CI green, then v0.1.1 decision (needs user go-ahead)
 - 2026-08-23 — Post-release cleanup: removed local build outputs (release/ 235M, out/, test-results/); tmp artifacts already OS-cleaned; no Docker image residue. Repo topics + homepage (gccapps.com) set earlier. Project idle at v0.1.0 — next: real MF750 fixtures → v0.1.1 when convenient
 - 2026-08-17 — v0.1.0 RELEASED (github.com/qtrcipher/printpilot/releases/tag/v0.1.0): nsis+portable, AppImage+deb, SHA256SUMS; verified working on the user's real MF750. Open: record real fixtures → v0.1.1; hardware reports → v1.0.0
 - 2026-08-17 — Phase 6 prep: README screenshots (5, captured via e2e), privacy note (nothing leaves the machine, code-verified), honest printer matrix. Phase 5 mostly closed — one item blocked on hardware (recorded fixtures). Watch: OSK e2e flaked once locally — next: real MF750 fixtures, then v0.1.0
